@@ -1,0 +1,39 @@
+# CogniAssist - Dépendances du projet
+# Python 3.11+ requis
+
+# === LLM & LangChain ===
+langchain==0.3.25
+langchain-community==0.3.24
+langchain-openai==0.3.18
+openai==1.82.0
+tiktoken==0.9.0
+
+# === Embeddings & Vectorstore ===
+chromadb==1.0.7
+sentence-transformers==4.1.0
+
+# === Ingestion de documents ===
+pymupdf==1.25.5
+python-docx==1.1.2
+
+# === Interface utilisateur ===
+streamlit==1.45.1
+
+# === Base de données ===
+sqlalchemy==2.0.41
+
+# === Validation & Configuration ===
+pydantic==2.11.3
+pydantic-settings==2.9.1
+python-dotenv==1.1.0
+
+# === Évaluation ===
+ragas==0.2.17
+
+# === Analyse & Visualisation ===
+pandas==2.3.0
+plotly==6.1.2
+numpy==2.2.6
+
+# === Tests ===
+pytest==8.4.0

@@ -1,0 +1,20 @@
+[
+  {
+    "question": "Qu'est-ce que CogniAssist ?",
+    "ground_truth": "CogniAssist est un assistant cognitif intelligent personnalisé basé sur le RAG.",
+    "context": "CogniAssist est un système de Retrieval-Augmented Generation qui permet aux utilisateurs d'interagir avec leurs documents de manière intelligente.",
+    "answer": ""
+  },
+  {
+    "question": "Comment fonctionne le pipeline RAG ?",
+    "ground_truth": "Le pipeline RAG fonctionne en trois étapes : recherche de documents pertinents, construction du prompt avec contexte, et génération de la réponse via un LLM.",
+    "context": "Le pipeline RAG utilise un retriever pour trouver les documents pertinents dans la base vectorielle ChromaDB, puis construit un prompt enrichi avec ce contexte avant de générer une réponse via OpenAI.",
+    "answer": ""
+  },
+  {
+    "question": "Quels formats de documents sont supportés ?",
+    "ground_truth": "CogniAssist supporte les fichiers PDF, DOCX et TXT.",
+    "context": "Le module d'ingestion de CogniAssist prend en charge trois formats de documents : PDF via PyMuPDF, DOCX via python-docx, et les fichiers texte brut TXT.",
+    "answer": ""
+  }
+]

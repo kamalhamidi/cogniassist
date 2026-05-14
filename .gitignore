@@ -1,0 +1,37 @@
+# === Environnement ===
+.env
+.venv/
+venv/
+env/
+
+# === Python ===
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# === Données ===
+data/chroma_db/
+data/uploads/
+data/*.db
+
+# === IDE ===
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# === Tests ===
+.pytest_cache/
+htmlcov/
+.coverage
+
+# === OS ===
+.DS_Store
+Thumbs.db
+
+# === Node (si applicable) ===
+node_modules/
