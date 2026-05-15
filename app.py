@@ -52,7 +52,7 @@ def main() -> None:
         )
 
         st.markdown("---")
-        st.caption(f"v0.1.0 • {settings.OPENAI_MODEL}")
+        st.caption(f"v0.1.0 • {settings.ollama_model}")
 
     # === Routage des pages ===
     if page == "🏠 Accueil":
@@ -117,7 +117,7 @@ def show_home() -> None:
     with status_col2:
         st.metric("Conversations", len(st.session_state.messages))
     with status_col3:
-        st.metric("Modèle", settings.OPENAI_MODEL)
+        st.metric("Modèle", settings.ollama_model)
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ globale `settings` importable dans tout le projet.
 
 from pathlib import Path
 from pydantic_settings import BaseSettings
-from pydantic import field_validator
+from pydantic import Field
 from dotenv import load_dotenv
 
 # Charger les variables d'environnement depuis .env
@@ -21,12 +21,21 @@ BASE_DIR = Path(__file__).resolve().parent
 class Settings(BaseSettings):
     """Paramètres globaux de l'application CogniAssist."""
 
-    # === OpenAI ===
-    OPENAI_API_KEY: str = "your_openai_api_key_here"
-    OPENAI_MODEL: str = "gpt-4o-mini"
+    # === Ollama ===
+    ollama_base_url: str = Field(
+        default="http://localhost:11434",
+        validation_alias="OLLAMA_BASE_URL",
+    )
+    ollama_model: str = Field(
+        default="mistral:7b",
+        validation_alias="OLLAMA_MODEL",
+    )
 
     # === Embeddings ===
-    EMBEDDING_MODEL: str = "paraphrase-multilingual-mpnet-base-v2"
+    embedding_model: str = Field(
+        default="nomic-embed-text",
+        validation_alias="EMBEDDING_MODEL",
+    )
 
     # === ChromaDB ===
     CHROMA_PERSIST_DIR: str = "./data/chroma_db"
@@ -49,20 +58,6 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
-
-    @field_validator("OPENAI_API_KEY")
-    @classmethod
-    def validate_api_key(cls, v: str) -> str:
-        """Vérifie que la clé API OpenAI est définie."""
-        if v == "your_openai_api_key_here" or not v:
-            import warnings
-            warnings.warn(
-                "⚠️  OPENAI_API_KEY n'est pas configurée. "
-                "Veuillez la définir dans le fichier .env pour utiliser les fonctionnalités LLM.",
-                UserWarning,
-                stacklevel=2,
-            )
-        return v
 
     @property
     def chroma_persist_path(self) -> Path:

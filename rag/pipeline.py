@@ -5,13 +5,13 @@ Orchestre le flux complet de Retrieval-Augmented Generation :
 1. Réception de la question utilisateur
 2. Recherche des documents pertinents (retrieval)
 3. Construction du prompt avec contexte
-4. Génération de la réponse via LLM (OpenAI)
+4. Génération de la réponse via LLM (Ollama)
 5. Sauvegarde dans la mémoire de conversation
 """
 
 from typing import Optional
 
-from langchain_openai import ChatOpenAI
+from langchain_ollama import ChatOllama
 from langchain.schema import HumanMessage, SystemMessage
 
 from vectorstore.retriever import DocumentRetriever
@@ -24,7 +24,7 @@ class RAGPipeline:
     Pipeline RAG complet.
 
     Intègre la recherche de documents, la construction de prompts
-    et la génération de réponses via un LLM OpenAI.
+    et la génération de réponses via un LLM Ollama.
     """
 
     def __init__(
@@ -42,7 +42,7 @@ class RAGPipeline:
             retriever: Retriever pour la recherche de documents.
             prompt_builder: Constructeur de prompts.
             memory: Mémoire de conversation.
-            model_name: Nom du modèle OpenAI.
+            model_name: Nom du modèle Ollama.
             temperature: Température de génération.
         """
         from config import settings
@@ -51,11 +51,11 @@ class RAGPipeline:
         self.prompt_builder = prompt_builder or PromptBuilder()
         self.memory = memory or ConversationMemory()
 
-        model = model_name or settings.OPENAI_MODEL
-        self.llm = ChatOpenAI(
+        model = model_name or settings.ollama_model
+        self.llm = ChatOllama(
             model=model,
+            base_url=settings.ollama_base_url,
             temperature=temperature,
-            openai_api_key=settings.OPENAI_API_KEY,
         )
 
     def query(
@@ -117,7 +117,7 @@ class RAGPipeline:
             "answer": answer,
             "sources": sources,
             "num_sources": len(sources),
-            "model": self.llm.model_name,
+            "model": self.llm.model,
         }
 
     def reset_memory(self) -> None:

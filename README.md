@@ -2,15 +2,15 @@
 
 **Assistant cognitif intelligent personnalisé basé sur le RAG (Retrieval-Augmented Generation)**
 
-CogniAssist est un système qui permet aux utilisateurs d'importer leurs propres documents (PDF, DOCX, TXT), de les indexer sémantiquement, puis de poser des questions en langage naturel. Le système retrouve les passages pertinents et génère des réponses précises et contextualisées grâce à un pipeline RAG combinant LangChain et OpenAI.
+CogniAssist est un système qui permet aux utilisateurs d'importer leurs propres documents (PDF, DOCX, TXT), de les indexer sémantiquement, puis de poser des questions en langage naturel. Le système retrouve les passages pertinents et génère des réponses précises et contextualisées grâce à un pipeline RAG combinant LangChain et Ollama.
 
 ---
 
 ## 📋 Fonctionnalités
 
 - 📄 **Ingestion multi-format** : Import de fichiers PDF, DOCX et TXT avec nettoyage et découpage automatique
-- 🔍 **Recherche sémantique** : Embeddings via Sentence-Transformers + base vectorielle ChromaDB
-- 🤖 **Pipeline RAG** : LangChain + OpenAI pour des réponses contextualisées
+- 🔍 **Recherche sémantique** : Embeddings via Ollama + base vectorielle ChromaDB
+- 🤖 **Pipeline RAG** : LangChain + Ollama pour des réponses contextualisées
 - 👤 **Personnalisation** : Profils utilisateurs avec SQLite/SQLAlchemy
 - 💬 **Interface conversationnelle** : Chat intelligent avec historique et sources
 - 📊 **Dashboard** : Statistiques d'utilisation et métriques
@@ -31,7 +31,7 @@ cogniassist/
 │   └── cleaner.py            # Nettoyage et normalisation du texte
 │
 ├── vectorstore/              # Module de gestion vectorielle
-│   ├── embedder.py           # Génération d'embeddings (Sentence-Transformers)
+│   ├── embedder.py           # Génération d'embeddings (Ollama)
 │   ├── store.py              # Interface ChromaDB
 │   └── retriever.py          # Recherche par similarité sémantique
 │
@@ -80,7 +80,7 @@ cogniassist/
 
 - Python 3.11 ou supérieur
 - pip (gestionnaire de paquets Python)
-- Clé API OpenAI
+- Ollama (local)
 
 ### Étapes
 
@@ -107,16 +107,19 @@ cogniassist/
    ```bash
    cp .env.example .env
    ```
-   Puis éditer `.env` et remplir votre clé API OpenAI :
-   ```
-   OPENAI_API_KEY=sk-votre-cle-api-ici
-   ```
 
-5. **Lancer l'application**
-   ```bash
-   streamlit run app.py
-   ```
-   L'application s'ouvre automatiquement dans votre navigateur à `http://localhost:8501`
+5. **Installer Ollama**
+   1. Download Ollama : https://ollama.com/download
+   2. Install and launch it
+   3. Open a terminal and run :
+      ollama pull mistral:7b
+      ollama pull nomic-embed-text
+   4. Verify it works :
+      ollama run mistral:7b "hello"
+   5. Then launch the app :
+      streamlit run app.py
+
+L'application s'ouvre automatiquement dans votre navigateur à `http://localhost:8501`
 
 ---
 
@@ -124,9 +127,9 @@ cogniassist/
 
 | Variable | Description | Défaut |
 |---|---|---|
-| `OPENAI_API_KEY` | Clé API OpenAI (obligatoire pour le LLM) | — |
-| `OPENAI_MODEL` | Modèle OpenAI à utiliser | `gpt-4o-mini` |
-| `EMBEDDING_MODEL` | Modèle Sentence-Transformers | `paraphrase-multilingual-mpnet-base-v2` |
+| `OLLAMA_BASE_URL` | URL locale d'Ollama | `http://localhost:11434` |
+| `OLLAMA_MODEL` | Modèle Ollama à utiliser | `mistral:7b` |
+| `EMBEDDING_MODEL` | Modèle d'embeddings Ollama | `nomic-embed-text` |
 | `CHROMA_PERSIST_DIR` | Répertoire de persistance ChromaDB | `./data/chroma_db` |
 | `SQLITE_DB_PATH` | Chemin de la base SQLite | `./data/cogniassist.db` |
 | `UPLOAD_DIR` | Répertoire des uploads | `./data/uploads` |
@@ -150,9 +153,9 @@ pytest tests/ -v
 
 | Composant | Technologie |
 |---|---|
-| Framework LLM | LangChain + LangChain-OpenAI |
-| LLM | OpenAI (GPT-4o-mini) |
-| Embeddings | Sentence-Transformers |
+| Framework LLM | LangChain + LangChain-Ollama |
+| LLM | Ollama (mistral:7b) |
+| Embeddings | Ollama (nomic-embed-text) |
 | Base vectorielle | ChromaDB |
 | Base relationnelle | SQLite + SQLAlchemy |
 | Interface | Streamlit |

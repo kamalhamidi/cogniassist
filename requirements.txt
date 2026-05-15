@@ -4,8 +4,8 @@
 # === LLM & LangChain ===
 langchain==0.3.25
 langchain-community==0.3.24
-langchain-openai==0.3.18
-openai==1.82.0
+langchain-ollama==0.3.3
+ollama==0.3.3
 tiktoken==0.9.0
 
 # === Embeddings & Vectorstore ===

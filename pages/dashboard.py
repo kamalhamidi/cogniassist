@@ -32,7 +32,7 @@ def render_dashboard_page() -> None:
 
     with col4:
         from config import settings
-        st.metric("🤖 Modèle", settings.OPENAI_MODEL)
+        st.metric("🤖 Modèle", settings.ollama_model)
 
     st.markdown("---")
 

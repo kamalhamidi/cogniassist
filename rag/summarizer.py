@@ -8,7 +8,7 @@ les textes dépassant la fenêtre de contexte.
 
 from typing import Optional
 
-from langchain_openai import ChatOpenAI
+from langchain_ollama import ChatOllama
 from langchain.schema import HumanMessage, SystemMessage
 
 from rag.prompt_builder import PromptBuilder
@@ -33,17 +33,17 @@ class Summarizer:
         Initialise le résumeur.
 
         Args:
-            model_name: Nom du modèle OpenAI.
+            model_name: Nom du modèle Ollama.
             temperature: Température de génération (basse pour plus de fidélité).
             max_chunk_size: Taille maximale d'un chunk pour le résumé.
         """
         from config import settings
 
-        model = model_name or settings.OPENAI_MODEL
-        self.llm = ChatOpenAI(
+        model = model_name or settings.ollama_model
+        self.llm = ChatOllama(
             model=model,
+            base_url=settings.ollama_base_url,
             temperature=temperature,
-            openai_api_key=settings.OPENAI_API_KEY,
         )
         self.max_chunk_size = max_chunk_size
         self.prompt_builder = PromptBuilder()
