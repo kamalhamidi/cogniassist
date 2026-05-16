@@ -2,19 +2,61 @@
   {
     "question": "Qu'est-ce que CogniAssist ?",
     "ground_truth": "CogniAssist est un assistant cognitif intelligent personnalisé basé sur le RAG.",
-    "context": "CogniAssist est un système de Retrieval-Augmented Generation qui permet aux utilisateurs d'interagir avec leurs documents de manière intelligente.",
-    "answer": ""
+    "context": "CogniAssist est un système de Retrieval-Augmented Generation qui permet aux utilisateurs d'interagir avec leurs documents de manière intelligente. Il utilise Ollama avec mistral:7b.",
+    "category": "définition"
   },
   {
-    "question": "Comment fonctionne le pipeline RAG ?",
-    "ground_truth": "Le pipeline RAG fonctionne en trois étapes : recherche de documents pertinents, construction du prompt avec contexte, et génération de la réponse via un LLM.",
-    "context": "Le pipeline RAG utilise un retriever pour trouver les documents pertinents dans la base vectorielle ChromaDB, puis construit un prompt enrichi avec ce contexte avant de générer une réponse via OpenAI.",
-    "answer": ""
+    "question": "Comment fonctionne le pipeline RAG de CogniAssist ?",
+    "ground_truth": "Le pipeline RAG fonctionne en trois étapes : recherche de documents pertinents dans ChromaDB, construction du prompt avec contexte et profil utilisateur, et génération de la réponse via Ollama.",
+    "context": "Le pipeline RAG utilise un SmartRetriever pour trouver les documents pertinents dans la base vectorielle ChromaDB avec reranking hybride, puis construit un prompt enrichi avec le contexte et le profil utilisateur avant de générer une réponse via Ollama mistral:7b.",
+    "category": "processus"
   },
   {
-    "question": "Quels formats de documents sont supportés ?",
-    "ground_truth": "CogniAssist supporte les fichiers PDF, DOCX et TXT.",
-    "context": "Le module d'ingestion de CogniAssist prend en charge trois formats de documents : PDF via PyMuPDF, DOCX via python-docx, et les fichiers texte brut TXT.",
-    "answer": ""
+    "question": "Quels formats de documents sont supportés par CogniAssist ?",
+    "ground_truth": "CogniAssist supporte les fichiers PDF, DOCX, TXT et Markdown.",
+    "context": "Le module d'ingestion de CogniAssist prend en charge quatre formats de documents : PDF via PyMuPDF, DOCX via python-docx, les fichiers texte brut TXT et les fichiers Markdown MD.",
+    "category": "factuel"
+  },
+  {
+    "question": "Comment CogniAssist personnalise-t-il les réponses ?",
+    "ground_truth": "CogniAssist adapte les réponses en fonction du profil utilisateur : niveau d'expertise, domaines d'intérêt, langue préférée et style de réponse souhaité.",
+    "context": "Le module user de CogniAssist gère les profils utilisateurs avec SQLite. Le PersonalizedRecommender adapte le nombre de chunks (k), la température du LLM et le contexte utilisateur injecté dans le prompt selon le niveau d'expertise : débutant, intermédiaire ou expert.",
+    "category": "processus"
+  },
+  {
+    "question": "Quel modèle d'embedding utilise CogniAssist ?",
+    "ground_truth": "CogniAssist utilise nomic-embed-text via Ollama comme modèle d'embedding principal, avec un fallback vers HuggingFace paraphrase-multilingual-mpnet-base-v2.",
+    "context": "L'EmbeddingManager utilise OllamaEmbeddings avec le modèle nomic-embed-text comme fournisseur principal. En cas d'échec de connexion à Ollama, il bascule automatiquement vers HuggingFaceEmbeddings avec le modèle paraphrase-multilingual-mpnet-base-v2 sur CPU.",
+    "category": "factuel"
+  },
+  {
+    "question": "Comment fonctionne le SmartRetriever ?",
+    "ground_truth": "Le SmartRetriever effectue une recherche en 4 étapes : récupération de k*2 candidats, filtrage par score minimum, reranking hybride combinant similarité vectorielle et mots-clés, puis sélection des top-k résultats.",
+    "context": "Le SmartRetriever implémente un système de recherche intelligent. Il récupère k*2 candidats via ChromaDB, filtre ceux dont le score est inférieur à 0.3, puis applique un reranking hybride pondérant 70% similarité vectorielle et 30% chevauchement de mots-clés avant de retourner les k meilleurs résultats.",
+    "category": "processus"
+  },
+  {
+    "question": "Pourquoi utiliser ChromaDB comme base vectorielle ?",
+    "ground_truth": "ChromaDB est utilisé car il offre une persistance locale, une recherche par similarité cosinus efficace, et fonctionne sans serveur externe.",
+    "context": "CogniAssist utilise ChromaDB comme base vectorielle persistante. Les vecteurs sont stockés dans ./data/chroma_db/ avec la télémétrie désactivée et la similarité cosinus. ChromaDB permet l'ajout par batchs de 50 documents avec détection de doublons basée sur le chunk_id.",
+    "category": "explication"
+  },
+  {
+    "question": "Quelles sont les métriques du tableau de bord ?",
+    "ground_truth": "Le tableau de bord affiche le nombre de documents, les questions posées, le score de connaissance sur 100, le taux de satisfaction, l'activité par jour et les sujets explorés.",
+    "context": "Le dashboard Streamlit affiche 4 KPIs : documents uploadés, questions posées, score de connaissance (0-100 calculé comme docs*10 + questions*2 plafonné à 100), et taux de satisfaction basé sur le feedback positif. Il montre aussi un graphique d'activité par jour et les sujets fréquents extraits des questions.",
+    "category": "factuel"
+  },
+  {
+    "question": "Comment ajouter un document dans CogniAssist ?",
+    "ground_truth": "Pour ajouter un document, il faut l'uploader via la page Documents de l'interface Streamlit. Le système effectue automatiquement l'ingestion, le chunking, l'indexation dans ChromaDB et la génération d'un résumé.",
+    "context": "La page upload.py de Streamlit permet le glisser-déposer de fichiers PDF, DOCX, TXT et MD. Le processus d'ingestion comprend : chargement via DocumentLoader, nettoyage via TextCleaner, découpage via DocumentChunker, indexation dans ChromaDB via VectorStore, et résumé automatique via RAGPipeline.summarize_document().",
+    "category": "processus"
+  },
+  {
+    "question": "Qu'est-ce que le score de connaissance ?",
+    "ground_truth": "Le score de connaissance est un indicateur de 0 à 100 qui mesure l'engagement de l'utilisateur. Il est calculé comme documents * 10 + questions * 2, plafonné à 100.",
+    "context": "Le PersonalizedRecommender calcule un knowledge_score simple : nombre de documents uploadés multiplié par 10 plus nombre de questions posées multiplié par 2, le tout plafonné à 100 avec min(score, 100). Ce score reflète l'activité et l'engagement de l'utilisateur avec ses documents.",
+    "category": "définition"
   }
 ]
