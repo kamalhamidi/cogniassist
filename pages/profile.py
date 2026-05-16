@@ -8,22 +8,8 @@ ses préférences et de visualiser ses statistiques personnelles.
 import streamlit as st
 
 
-def init_session_state() -> None:
-    """Initialise les variables de session Streamlit."""
-    defaults: dict = {
-        "messages": [],
-        "user_id": "default",
-        "documents_loaded": False,
-        "current_page": "Profil",
-    }
-    for key, value in defaults.items():
-        if key not in st.session_state:
-            st.session_state[key] = value
-
-
 def render_profile_page() -> None:
     """Affiche la page de gestion du profil utilisateur."""
-    init_session_state()
     st.header("👤 Profil Utilisateur")
     st.markdown("Gérez votre profil et vos préférences pour personnaliser CogniAssist.")
 
@@ -103,6 +89,3 @@ def render_profile_page() -> None:
         st.metric("Réponses reçues", len([m for m in st.session_state.get("messages", []) if m.get("role") == "assistant"]))
     with col3:
         st.metric("ID Utilisateur", user_id)
-
-
-render_profile_page()

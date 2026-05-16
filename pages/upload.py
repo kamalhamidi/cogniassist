@@ -11,22 +11,8 @@ from pathlib import Path
 import uuid
 
 
-def init_session_state() -> None:
-    """Initialise les variables de session Streamlit."""
-    defaults: dict = {
-        "messages": [],
-        "user_id": "default",
-        "documents_loaded": False,
-        "current_page": "Upload",
-    }
-    for key, value in defaults.items():
-        if key not in st.session_state:
-            st.session_state[key] = value
-
-
 def render_upload_page() -> None:
     """Affiche la page d'import de documents."""
-    init_session_state()
     st.header("📄 Import de Documents")
     st.markdown("Chargez vos fichiers pour les indexer dans la base de connaissances.")
 
@@ -130,6 +116,3 @@ def render_upload_page() -> None:
         st.metric("Chunks indexés", count)
     except Exception:
         st.info("Base vectorielle non initialisée.")
-
-
-render_upload_page()

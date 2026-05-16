@@ -9,22 +9,8 @@ et affiche les sources utilisées pour chaque réponse.
 import streamlit as st
 
 
-def init_session_state() -> None:
-    """Initialise les variables de session Streamlit."""
-    defaults: dict = {
-        "messages": [],
-        "user_id": "default",
-        "documents_loaded": False,
-        "current_page": "Chat",
-    }
-    for key, value in defaults.items():
-        if key not in st.session_state:
-            st.session_state[key] = value
-
-
 def render_chat_page() -> None:
     """Affiche la page de chat intelligent."""
-    init_session_state()
     st.header("💬 Chat Intelligent")
     st.markdown("Posez vos questions sur vos documents. CogniAssist retrouve les informations pertinentes et génère une réponse.")
 
@@ -94,6 +80,3 @@ def render_chat_page() -> None:
         if st.sidebar.button("🗑️ Vider la conversation"):
             st.session_state.messages = []
             st.rerun()
-
-
-render_chat_page()

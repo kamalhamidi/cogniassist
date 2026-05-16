@@ -45,17 +45,30 @@ def main() -> None:
         st.title(settings.APP_NAME)
         st.markdown("---")
 
-        st.page_link("app.py", label="🏠 Accueil")
-        st.page_link("pages/chat.py", label="💬 Chat")
-        st.page_link("pages/upload.py", label="📄 Upload")
-        st.page_link("pages/dashboard.py", label="📊 Dashboard")
-        st.page_link("pages/profile.py", label="👤 Profil")
+        page = st.radio(
+            "Navigation",
+            options=["🏠 Accueil", "💬 Chat", "📄 Upload", "📊 Dashboard", "👤 Profil"],
+            label_visibility="collapsed",
+        )
 
         st.markdown("---")
         st.caption(f"v0.1.0 • {settings.ollama_model}")
 
-    # Page d'accueil
-    show_home()
+    # === Routage des pages ===
+    if page == "🏠 Accueil":
+        show_home()
+    elif page == "💬 Chat":
+        from pages.chat import render_chat_page
+        render_chat_page()
+    elif page == "📄 Upload":
+        from pages.upload import render_upload_page
+        render_upload_page()
+    elif page == "📊 Dashboard":
+        from pages.dashboard import render_dashboard_page
+        render_dashboard_page()
+    elif page == "👤 Profil":
+        from pages.profile import render_profile_page
+        render_profile_page()
 
 
 def show_home() -> None:

@@ -8,22 +8,8 @@ des statistiques sur les interactions et la base de connaissances.
 import streamlit as st
 
 
-def init_session_state() -> None:
-    """Initialise les variables de session Streamlit."""
-    defaults: dict = {
-        "messages": [],
-        "user_id": "default",
-        "documents_loaded": False,
-        "current_page": "Dashboard",
-    }
-    for key, value in defaults.items():
-        if key not in st.session_state:
-            st.session_state[key] = value
-
-
 def render_dashboard_page() -> None:
     """Affiche la page de dashboard avec statistiques."""
-    init_session_state()
     st.header("📊 Dashboard")
     st.markdown("Vue d'ensemble de votre activité CogniAssist.")
 
@@ -91,6 +77,3 @@ def render_dashboard_page() -> None:
             st.session_state.messages = []
             st.success("✅ Historique vidé.")
             st.rerun()
-
-
-render_dashboard_page()
