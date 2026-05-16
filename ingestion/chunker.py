@@ -1,103 +1,198 @@
 """
-ingestion/chunker.py — Découpage de texte en chunks.
+ingestion/chunker.py — Découpage de documents en chunks.
 
-Divise les documents en morceaux de taille contrôlée avec
-chevauchement (overlap) pour maintenir le contexte entre les chunks.
-Utilise LangChain RecursiveCharacterTextSplitter.
+Utilise LangChain RecursiveCharacterTextSplitter pour découper
+les Documents en morceaux de taille contrôlée avec chevauchement.
+Propose deux stratégies : par caractères et par tokens (tiktoken).
 """
 
+import logging
 from typing import Optional
-from dataclasses import dataclass
 
+from langchain.schema import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
+from config import settings
 
-@dataclass
-class Chunk:
-    """Représente un chunk de texte avec ses métadonnées."""
-
-    content: str
-    index: int
-    metadata: dict
+logger = logging.getLogger("cogniassist.ingestion")
 
 
-class TextChunker:
+class DocumentChunker:
     """
-    Découpe du texte en chunks avec chevauchement.
+    Découpe des Documents LangChain en chunks avec métadonnées enrichies.
 
-    Utilise RecursiveCharacterTextSplitter de LangChain pour un
-    découpage intelligent respectant les limites de phrases.
+    Deux splitters disponibles :
+    - text_splitter : découpage par nombre de caractères (usage général)
+    - token_splitter : découpage par nombre de tokens tiktoken (documents techniques)
     """
 
-    def __init__(
-        self,
-        chunk_size: int = 500,
-        chunk_overlap: int = 50,
-        separators: Optional[list[str]] = None,
-    ) -> None:
+    def __init__(self) -> None:
         """
-        Initialise le chunker.
+        Initialise les deux splitters avec les paramètres des settings.
 
-        Args:
-            chunk_size: Taille maximale de chaque chunk (en caractères).
-            chunk_overlap: Chevauchement entre chunks consécutifs.
-            separators: Séparateurs à utiliser pour le découpage.
+        text_splitter utilise les séparateurs naturels du français.
+        token_splitter utilise le tokenizer gpt2 (gratuit et local).
         """
-        self.chunk_size = chunk_size
-        self.chunk_overlap = chunk_overlap
-        self.separators = separators or ["\n\n", "\n", ". ", " ", ""]
-
-        self._splitter = RecursiveCharacterTextSplitter(
-            chunk_size=self.chunk_size,
-            chunk_overlap=self.chunk_overlap,
-            separators=self.separators,
+        # Splitter par caractères — usage général
+        self.text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=settings.CHUNK_SIZE,
+            chunk_overlap=settings.CHUNK_OVERLAP,
             length_function=len,
+            separators=["\n\n", "\n", ". ", "! ", "? ", " ", ""],
         )
 
-    def split(self, text: str, metadata: Optional[dict] = None) -> list[Chunk]:
+        # Splitter par tokens — documents techniques
+        self.token_splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
+            model_name="gpt2",
+            chunk_size=400,
+            chunk_overlap=40,
+        )
+
+        logger.debug(
+            "DocumentChunker initialisé (chunk_size=%d, chunk_overlap=%d)",
+            settings.CHUNK_SIZE, settings.CHUNK_OVERLAP,
+        )
+
+    def chunk(self, documents: list[Document]) -> list[Document]:
         """
-        Découpe un texte en chunks.
+        Découpe les documents en chunks avec le text_splitter (par caractères).
+
+        Chaque chunk est enrichi avec les métadonnées suivantes :
+        - chunk_id : identifiant unique "{file_name}_{index}"
+        - chunk_index : position du chunk dans le document source
+        - total_chunks : nombre total de chunks issus de ce document
+        - word_count : nombre de mots dans le chunk
 
         Args:
-            text: Le texte à découper.
-            metadata: Métadonnées à associer à chaque chunk.
+            documents: Liste de Documents LangChain à découper.
 
         Returns:
-            Liste de chunks avec indices et métadonnées.
+            Liste de tous les chunks avec métadonnées enrichies.
         """
-        if not text or not text.strip():
+        return self._split_with(self.text_splitter, documents)
+
+    def chunk_by_tokens(self, documents: list[Document]) -> list[Document]:
+        """
+        Découpe les documents en chunks avec le token_splitter (par tokens).
+
+        Utilisez cette méthode pour les documents techniques où le
+        nombre de tokens est plus pertinent que le nombre de caractères.
+        Même enrichissement de métadonnées que chunk().
+
+        Args:
+            documents: Liste de Documents LangChain à découper.
+
+        Returns:
+            Liste de tous les chunks avec métadonnées enrichies.
+        """
+        return self._split_with(self.token_splitter, documents)
+
+    def _split_with(
+        self,
+        splitter: RecursiveCharacterTextSplitter,
+        documents: list[Document],
+    ) -> list[Document]:
+        """
+        Méthode interne de découpage partagée par les deux stratégies.
+
+        Args:
+            splitter: Instance de RecursiveCharacterTextSplitter à utiliser.
+            documents: Liste de Documents à découper.
+
+        Returns:
+            Liste de chunks avec métadonnées enrichies.
+        """
+        if not documents:
             return []
 
-        base_metadata = metadata or {}
-        raw_chunks = self._splitter.split_text(text)
-
-        return [
-            Chunk(
-                content=chunk,
-                index=i,
-                metadata={**base_metadata, "chunk_index": i, "total_chunks": len(raw_chunks)},
-            )
-            for i, chunk in enumerate(raw_chunks)
-        ]
-
-    def split_documents(
-        self, documents: list, source_key: str = "filename"
-    ) -> list[Chunk]:
-        """
-        Découpe une liste de documents en chunks.
-
-        Args:
-            documents: Liste de Documents (du module loader).
-            source_key: Clé de métadonnée pour identifier la source.
-
-        Returns:
-            Liste de tous les chunks issus des documents.
-        """
-        all_chunks: list[Chunk] = []
+        all_chunks: list[Document] = []
 
         for doc in documents:
-            metadata = {source_key: getattr(doc, "filename", "inconnu"), **getattr(doc, "metadata", {})}
-            chunks = self.split(doc.content, metadata=metadata)
-            all_chunks.extend(chunks)
+            source = doc.metadata.get(
+                "file_name",
+                doc.metadata.get("source", "inconnu"),
+            )
 
+            # Découper le document
+            chunks = splitter.split_text(doc.page_content)
+
+            if not chunks:
+                logger.warning(
+                    "Document '%s' : aucun chunk produit après découpage", source
+                )
+                continue
+
+            total_chunks = len(chunks)
+
+            for idx, chunk_text in enumerate(chunks):
+                chunk_metadata = {
+                    **doc.metadata,
+                    "chunk_id": f"{source}_{idx}",
+                    "chunk_index": idx,
+                    "total_chunks": total_chunks,
+                    "word_count": len(chunk_text.split()),
+                }
+
+                all_chunks.append(
+                    Document(page_content=chunk_text, metadata=chunk_metadata)
+                )
+
+        logger.info(
+            "Découpage terminé : %d document(s) → %d chunk(s)",
+            len(documents), len(all_chunks),
+        )
         return all_chunks
+
+    @staticmethod
+    def get_stats(chunks: list[Document]) -> dict:
+        """
+        Calcule des statistiques sur les chunks produits.
+
+        Args:
+            chunks: Liste de chunks LangChain.
+
+        Returns:
+            Dictionnaire avec les statistiques d'ingestion :
+            - total_chunks : nombre total de chunks
+            - avg_chunk_size : taille moyenne en caractères
+            - min_chunk_size : taille du plus petit chunk
+            - max_chunk_size : taille du plus grand chunk
+            - avg_word_count : nombre moyen de mots par chunk
+            - total_documents : nombre de fichiers sources uniques
+        """
+        if not chunks:
+            return {
+                "total_chunks": 0,
+                "avg_chunk_size": 0.0,
+                "min_chunk_size": 0,
+                "max_chunk_size": 0,
+                "avg_word_count": 0.0,
+                "total_documents": 0,
+            }
+
+        sizes = [len(c.page_content) for c in chunks]
+        word_counts = [len(c.page_content.split()) for c in chunks]
+
+        # Compter les documents sources uniques
+        sources: set[str] = set()
+        for c in chunks:
+            source = c.metadata.get(
+                "file_name",
+                c.metadata.get("source", "inconnu"),
+            )
+            sources.add(source)
+
+        stats = {
+            "total_chunks": len(chunks),
+            "avg_chunk_size": round(sum(sizes) / len(sizes), 1),
+            "min_chunk_size": min(sizes),
+            "max_chunk_size": max(sizes),
+            "avg_word_count": round(sum(word_counts) / len(word_counts), 1),
+            "total_documents": len(sources),
+        }
+
+        logger.info(
+            "Statistiques : %d chunks, taille moy. %.0f car., %d document(s) source(s)",
+            stats["total_chunks"], stats["avg_chunk_size"], stats["total_documents"],
+        )
+        return stats

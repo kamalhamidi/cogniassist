@@ -1,97 +1,160 @@
 """
 ingestion/cleaner.py — Nettoyage et prétraitement du texte.
 
-Fournit des utilitaires pour nettoyer le texte brut extrait des
-documents avant le découpage en chunks : suppression d'espaces
-superflus, de caractères spéciaux, normalisation Unicode, etc.
+Applique des étapes de nettoyage successives sur les Documents
+LangChain : normalisation Unicode NFKC, suppression des caractères
+de contrôle, normalisation des espaces, et filtrage des documents trop courts.
 """
 
+import logging
 import re
 import unicodedata
+
+from langchain.schema import Document
+
+logger = logging.getLogger("cogniassist.ingestion")
+
+# Seuil minimum de caractères pour qu'un document soit conservé
+MIN_DOCUMENT_LENGTH = 50
 
 
 class TextCleaner:
     """
-    Nettoie et normalise le texte brut extrait de documents.
+    Nettoie et normalise le texte des Documents LangChain.
 
-    Opérations disponibles :
-    - Normalisation Unicode (NFC)
-    - Suppression des espaces multiples
-    - Suppression des sauts de ligne excessifs
-    - Suppression des caractères de contrôle
-    - Nettoyage des en-têtes/pieds de page récurrents
+    Pipeline de nettoyage appliqué dans l'ordre :
+    1. Normalisation Unicode NFKC (ligatures, guillemets…)
+    2. Suppression des caractères de contrôle non imprimables
+    3. Suppression des espaces superflus
+    4. Filtrage des documents trop courts (< 50 caractères)
     """
 
-    def clean(self, text: str) -> str:
+    def clean(self, documents: list[Document]) -> list[Document]:
         """
-        Applique toutes les étapes de nettoyage au texte.
+        Applique toutes les étapes de nettoyage à chaque Document.
+
+        Le page_content de chaque Document est nettoyé en place.
+        Les métadonnées ne sont jamais modifiées.
 
         Args:
-            text: Texte brut à nettoyer.
+            documents: Liste de Documents LangChain à nettoyer.
 
         Returns:
-            Texte nettoyé et normalisé.
+            Liste de Documents nettoyés (les documents trop courts sont exclus).
         """
-        if not text:
-            return ""
+        if not documents:
+            return []
 
-        text = self.normalize_unicode(text)
-        text = self.remove_control_characters(text)
-        text = self.normalize_whitespace(text)
-        text = self.normalize_line_breaks(text)
-        text = text.strip()
+        logger.info("Nettoyage de %d document(s)…", len(documents))
 
-        return text
+        cleaned: list[Document] = []
+        for doc in documents:
+            text = doc.page_content
 
-    @staticmethod
-    def normalize_unicode(text: str) -> str:
-        """Normalise le texte en forme NFC (composition canonique)."""
-        return unicodedata.normalize("NFC", text)
+            # Appliquer les étapes de nettoyage
+            text = self._normalize_unicode(text)
+            text = self._remove_special_characters(text)
+            text = self._remove_extra_whitespace(text)
 
-    @staticmethod
-    def remove_control_characters(text: str) -> str:
-        """Supprime les caractères de contrôle (sauf newline et tab)."""
-        return "".join(
-            char for char in text
-            if char in ("\n", "\t", "\r") or not unicodedata.category(char).startswith("C")
+            # Créer un nouveau Document avec le texte nettoyé
+            # (les métadonnées sont copiées telles quelles)
+            cleaned.append(
+                Document(page_content=text, metadata=doc.metadata.copy())
+            )
+
+        # Filtrer les documents trop courts
+        result = self._remove_short_documents(cleaned)
+
+        logger.info(
+            "Nettoyage terminé : %d → %d document(s) conservé(s)",
+            len(documents), len(result),
         )
+        return result
 
     @staticmethod
-    def normalize_whitespace(text: str) -> str:
-        """Remplace les espaces multiples par un seul espace."""
-        return re.sub(r"[^\S\n]+", " ", text)
-
-    @staticmethod
-    def normalize_line_breaks(text: str) -> str:
-        """Réduit les sauts de ligne excessifs (max 2 consécutifs)."""
-        return re.sub(r"\n{3,}", "\n\n", text)
-
-    @staticmethod
-    def remove_headers_footers(text: str, patterns: list[str] | None = None) -> str:
+    def _remove_extra_whitespace(text: str) -> str:
         """
-        Supprime les en-têtes et pieds de page récurrents.
+        Supprime les espaces et sauts de ligne superflus.
+
+        - Remplace les espaces multiples par un seul espace.
+        - Réduit 3+ sauts de ligne consécutifs à 2 maximum.
+        - Supprime les espaces en début/fin de texte.
 
         Args:
             text: Texte à nettoyer.
-            patterns: Liste de patterns regex à supprimer.
 
         Returns:
-            Texte sans les motifs spécifiés.
+            Texte avec espaces normalisés.
         """
-        if not patterns:
-            return text
-
-        for pattern in patterns:
-            text = re.sub(pattern, "", text, flags=re.MULTILINE)
-
-        return text
-
-    @staticmethod
-    def remove_urls(text: str) -> str:
-        """Supprime les URLs du texte."""
-        return re.sub(r"https?://\S+", "", text)
+        # Remplacer les espaces multiples (hors newlines) par un seul espace
+        text = re.sub(r"[^\S\n]+", " ", text)
+        # Réduire les sauts de ligne excessifs (3+ → 2)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        # Supprimer les espaces en début/fin
+        return text.strip()
 
     @staticmethod
-    def remove_email_addresses(text: str) -> str:
-        """Supprime les adresses email du texte."""
-        return re.sub(r"\S+@\S+\.\S+", "", text)
+    def _remove_special_characters(text: str) -> str:
+        """
+        Supprime les caractères de contrôle non imprimables.
+
+        Conserve \\n (newline) et \\t (tabulation) qui sont utiles
+        pour la structure du texte. Conserve tous les caractères
+        accentués (français, translittération arabe) et la ponctuation.
+
+        Args:
+            text: Texte à nettoyer.
+
+        Returns:
+            Texte sans caractères de contrôle.
+        """
+        return "".join(
+            char for char in text
+            if char in ("\n", "\t")
+            or not unicodedata.category(char).startswith("C")
+        )
+
+    @staticmethod
+    def _normalize_unicode(text: str) -> str:
+        """
+        Applique la normalisation Unicode NFKC.
+
+        Corrige les artefacts d'encodage comme les ligatures
+        (ﬁ → fi, ﬂ → fl) et les guillemets typographiques
+        inhabituels.
+
+        Args:
+            text: Texte à normaliser.
+
+        Returns:
+            Texte normalisé en NFKC.
+        """
+        return unicodedata.normalize("NFKC", text)
+
+    @staticmethod
+    def _remove_short_documents(documents: list[Document]) -> list[Document]:
+        """
+        Filtre les Documents dont le contenu est trop court.
+
+        Un document avec moins de 50 caractères après nettoyage
+        est considéré inutile pour le RAG et sera exclu.
+
+        Args:
+            documents: Liste de Documents nettoyés.
+
+        Returns:
+            Liste filtrée (sans les documents trop courts).
+        """
+        result: list[Document] = []
+
+        for doc in documents:
+            if len(doc.page_content) < MIN_DOCUMENT_LENGTH:
+                source = doc.metadata.get("source", doc.metadata.get("file_name", "inconnu"))
+                logger.warning(
+                    "Document filtré (trop court : %d car.) — source : %s",
+                    len(doc.page_content), source,
+                )
+                continue
+            result.append(doc)
+
+        return result
