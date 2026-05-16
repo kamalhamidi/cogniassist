@@ -1,101 +1,120 @@
 """
-rag/summarizer.py — Résumé automatique de documents.
+rag/summarizer.py — Résumé automatique par lots et rapport de connaissances.
 
-Utilise le LLM pour générer des résumés concis de documents
-ou de longues réponses. Supporte le résumé par chunks pour
-les textes dépassant la fenêtre de contexte.
+Utilise le RAGPipeline pour générer des résumés de plusieurs documents
+et produire un rapport complet d'analyse des connaissances.
 """
 
-from typing import Optional
+import logging
+from datetime import datetime
 
-from langchain_ollama import ChatOllama
-from langchain.schema import HumanMessage, SystemMessage
-
-from rag.prompt_builder import PromptBuilder
+logger = logging.getLogger("cogniassist.rag")
 
 
-class Summarizer:
+class BatchSummarizer:
     """
-    Génère des résumés automatiques de textes longs.
+    Résumeur par lots de documents.
 
-    Utilise un LLM pour produire des résumés concis et structurés.
-    Supporte le résumé par morceaux (map-reduce) pour les textes
-    dépassant la limite de contexte.
+    Génère des résumés pour plusieurs documents et produit
+    des rapports structurés d'analyse des connaissances.
     """
 
-    def __init__(
+    def __init__(self, pipeline) -> None:
+        """
+        Initialise le résumeur avec une référence au pipeline RAG.
+
+        Args:
+            pipeline: Instance de RAGPipeline.
+        """
+        self.pipeline = pipeline
+
+    def summarize_all_documents(
         self,
-        model_name: Optional[str] = None,
-        temperature: float = 0.2,
-        max_chunk_size: int = 3000,
-    ) -> None:
+        document_names: list[str],
+    ) -> dict[str, str]:
         """
-        Initialise le résumeur.
+        Génère des résumés pour une liste de documents.
+
+        Traite chaque document individuellement. Si un document échoue,
+        l'erreur est capturée et stockée dans le résultat.
 
         Args:
-            model_name: Nom du modèle Ollama.
-            temperature: Température de génération (basse pour plus de fidélité).
-            max_chunk_size: Taille maximale d'un chunk pour le résumé.
-        """
-        from config import settings
-
-        model = model_name or settings.ollama_model
-        self.llm = ChatOllama(
-            model=model,
-            base_url=settings.ollama_base_url,
-            temperature=temperature,
-        )
-        self.max_chunk_size = max_chunk_size
-        self.prompt_builder = PromptBuilder()
-
-    def summarize(self, text: str) -> str:
-        """
-        Génère un résumé d'un texte.
-
-        Args:
-            text: Le texte à résumer.
+            document_names: Liste des noms de fichiers à résumer.
 
         Returns:
-            Le résumé généré.
+            Dictionnaire {nom_fichier: résumé_ou_erreur}.
         """
-        if not text or not text.strip():
-            return "Aucun texte à résumer."
+        results: dict[str, str] = {}
+        total = len(document_names)
 
-        # Si le texte est court, résumé direct
-        if len(text) <= self.max_chunk_size:
-            return self._summarize_single(text)
+        for i, file_name in enumerate(document_names, start=1):
+            logger.info("Résumé %d/%d : %s", i, total, file_name)
 
-        # Sinon, résumé par chunks (map-reduce)
-        return self._summarize_long(text)
+            try:
+                summary = self.pipeline.summarize_document(file_name)
+                results[file_name] = summary
+            except Exception as e:
+                error_msg = f"Erreur lors du résumé de '{file_name}' : {str(e)}"
+                logger.error(error_msg)
+                results[file_name] = error_msg
 
-    def _summarize_single(self, text: str) -> str:
-        """Résume un texte court en un seul appel LLM."""
-        prompt = self.prompt_builder.build_summary_prompt(text)
-        messages = [
-            SystemMessage(content="Tu es un assistant expert en synthèse de documents."),
-            HumanMessage(content=prompt),
-        ]
-        response = self.llm.invoke(messages)
-        return response.content
+        logger.info("Résumé terminé : %d/%d documents traités.", len(results), total)
+        return results
 
-    def _summarize_long(self, text: str) -> str:
-        """Résume un texte long par chunks (stratégie map-reduce)."""
-        # Découper en chunks
-        chunks = [
-            text[i:i + self.max_chunk_size]
-            for i in range(0, len(text), self.max_chunk_size)
-        ]
+    def generate_knowledge_report(
+        self,
+        user_goals: str,
+        document_names: list[str],
+    ) -> str:
+        """
+        Génère un rapport complet de connaissances.
 
-        # Phase Map : résumer chaque chunk
-        chunk_summaries: list[str] = []
-        for chunk in chunks:
-            summary = self._summarize_single(chunk)
-            chunk_summaries.append(summary)
+        Étapes :
+        1. Résumer tous les documents (500 premiers caractères chacun)
+        2. Analyser les lacunes via le pipeline
+        3. Formater le rapport final
 
-        # Phase Reduce : résumer les résumés
-        combined = "\n\n".join(chunk_summaries)
-        if len(combined) <= self.max_chunk_size:
-            return self._summarize_single(combined)
+        Args:
+            user_goals: Objectifs déclarés de l'utilisateur.
+            document_names: Liste des noms de fichiers indexés.
 
-        # Récursion si encore trop long
-        return self._summarize_long(combined)
+        Returns:
+            Rapport formaté en Markdown.
+        """
+        # 1. Résumer les documents
+        summaries = self.summarize_all_documents(document_names)
+
+        # 2. Analyse des lacunes
+        try:
+            gap_analysis = self.pipeline.analyze_knowledge_gaps(user_goals)
+        except Exception as e:
+            gap_analysis = f"Erreur lors de l'analyse : {str(e)}"
+
+        # 3. Formater le rapport
+        doc_list = "\n".join(f"- {name}" for name in document_names)
+
+        summary_sections: list[str] = []
+        for name, summary in summaries.items():
+            preview = summary[:500]
+            if len(summary) > 500:
+                preview += "..."
+            summary_sections.append(f"### {name}\n{preview}")
+
+        summaries_text = "\n\n".join(summary_sections)
+        timestamp = datetime.now().strftime("%d/%m/%Y à %H:%M")
+
+        report = f"""# Rapport de connaissances CogniAssist
+
+## Documents analysés
+{doc_list}
+
+## Résumés
+{summaries_text}
+
+## Analyse des lacunes
+{gap_analysis}
+
+---
+Généré par CogniAssist le {timestamp}"""
+
+        return report

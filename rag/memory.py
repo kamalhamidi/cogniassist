@@ -1,115 +1,146 @@
 """
 rag/memory.py — Gestion de la mémoire de conversation.
 
-Stocke l'historique des échanges question/réponse pour maintenir
-le contexte conversationnel dans le pipeline RAG.
+Stocke l'historique des messages utilisateur/assistant, gère la
+compression automatique quand l'historique dépasse la limite,
+et fournit des formats adaptés pour le prompt RAG et LangChain.
 """
 
+import logging
 from typing import Optional
-from dataclasses import dataclass, field
-from datetime import datetime
 
+from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
 
-@dataclass
-class Exchange:
-    """Un échange question/réponse dans la conversation."""
-
-    question: str
-    answer: str
-    timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
-    metadata: dict = field(default_factory=dict)
+logger = logging.getLogger("cogniassist.rag")
 
 
 class ConversationMemory:
     """
-    Mémoire de conversation pour le pipeline RAG.
+    Mémoire de conversation avec compression automatique.
 
-    Stocke les échanges passés et les fournit comme contexte
-    pour les questions suivantes.
+    Stocke les messages récents et compresse les plus anciens
+    en un résumé textuel pour éviter les dépassements de contexte.
     """
 
-    def __init__(self, max_exchanges: int = 20) -> None:
+    def __init__(self, max_messages: int = 10) -> None:
         """
         Initialise la mémoire de conversation.
 
         Args:
-            max_exchanges: Nombre maximum d'échanges à conserver.
+            max_messages: Nombre maximum de messages à conserver
+                         avant compression.
         """
-        self.max_exchanges = max_exchanges
-        self._history: list[Exchange] = []
+        self.messages: list[dict] = []
+        self.max_messages = max_messages
+        self.summary: str = ""
 
-    def add_exchange(
-        self,
-        question: str,
-        answer: str,
-        metadata: Optional[dict] = None,
-    ) -> None:
+    def add_user_message(self, content: str) -> None:
         """
-        Ajoute un échange à la mémoire.
+        Ajoute un message utilisateur à l'historique.
+
+        Déclenche la compression si la limite est dépassée.
 
         Args:
-            question: La question posée.
-            answer: La réponse générée.
-            metadata: Métadonnées optionnelles.
+            content: Contenu du message utilisateur.
         """
-        exchange = Exchange(
-            question=question,
-            answer=answer,
-            metadata=metadata or {},
-        )
-        self._history.append(exchange)
+        self.messages.append({"role": "user", "content": content})
 
-        # Limiter la taille de l'historique
-        if len(self._history) > self.max_exchanges:
-            self._history = self._history[-self.max_exchanges:]
+        if len(self.messages) > self.max_messages:
+            self._compress_history()
 
-    def get_history(self, last_n: Optional[int] = None) -> list[dict]:
+    def add_assistant_message(self, content: str) -> None:
         """
-        Retourne l'historique des échanges.
+        Ajoute un message assistant à l'historique.
 
         Args:
-            last_n: Nombre d'échanges à retourner (les plus récents).
-                    Si None, retourne tout l'historique.
+            content: Contenu de la réponse de l'assistant.
+        """
+        self.messages.append({"role": "assistant", "content": content})
+
+    def get_formatted_history(self) -> str:
+        """
+        Formate l'historique de conversation pour injection dans le prompt.
+
+        Inclut le résumé des messages compressés s'il existe,
+        suivi des messages récents formatés.
 
         Returns:
-            Liste de dictionnaires représentant les échanges.
+            Historique formaté en chaîne de caractères,
+            ou chaîne vide si aucun message.
         """
-        history = self._history if last_n is None else self._history[-last_n:]
-        return [
-            {
-                "question": ex.question,
-                "answer": ex.answer,
-                "timestamp": ex.timestamp,
-            }
-            for ex in history
-        ]
-
-    def get_context_string(self, last_n: int = 5) -> str:
-        """
-        Retourne l'historique formaté en texte pour le prompt.
-
-        Args:
-            last_n: Nombre d'échanges à inclure.
-
-        Returns:
-            Historique formaté en chaîne de caractères.
-        """
-        history = self.get_history(last_n=last_n)
-        if not history:
+        if not self.messages and not self.summary:
             return ""
 
         parts: list[str] = []
-        for ex in history:
-            parts.append(f"Q: {ex['question']}")
-            parts.append(f"R: {ex['answer']}")
+
+        # Ajouter le résumé des anciens messages
+        if self.summary:
+            parts.append(self.summary)
+            parts.append("")
+
+        # Ajouter les messages récents
+        for msg in self.messages:
+            if msg["role"] == "user":
+                parts.append(f"Utilisateur : {msg['content']}")
+            else:
+                parts.append(f"Assistant : {msg['content']}")
 
         return "\n".join(parts)
 
-    def clear(self) -> None:
-        """Vide la mémoire de conversation."""
-        self._history.clear()
+    def get_langchain_messages(self) -> list[BaseMessage]:
+        """
+        Convertit les messages en objets LangChain.
 
-    @property
-    def size(self) -> int:
-        """Nombre d'échanges en mémoire."""
-        return len(self._history)
+        Returns:
+            Liste de HumanMessage / AIMessage LangChain.
+        """
+        lc_messages: list[BaseMessage] = []
+
+        for msg in self.messages:
+            if msg["role"] == "user":
+                lc_messages.append(HumanMessage(content=msg["content"]))
+            else:
+                lc_messages.append(AIMessage(content=msg["content"]))
+
+        return lc_messages
+
+    def _compress_history(self) -> None:
+        """
+        Compresse l'historique quand il dépasse max_messages.
+
+        Conserve les 6 messages les plus récents et stocke un résumé
+        textuel des messages plus anciens dans self.summary.
+        """
+        keep_count = 6
+        old_messages = self.messages[:-keep_count]
+        self.messages = self.messages[-keep_count:]
+
+        # Construire un résumé des anciens messages
+        old_summary_parts = [m["content"][:100] for m in old_messages]
+        new_summary = "Résumé des échanges précédents : " + " | ".join(old_summary_parts)
+
+        # Cumuler avec le résumé existant
+        if self.summary:
+            self.summary = self.summary + " | " + new_summary
+        else:
+            self.summary = new_summary
+
+        logger.debug(
+            "Historique compressé : %d anciens messages → résumé, %d conservés.",
+            len(old_messages), len(self.messages),
+        )
+
+    def clear(self) -> None:
+        """Réinitialise les messages et le résumé."""
+        self.messages.clear()
+        self.summary = ""
+        logger.debug("Mémoire de conversation vidée.")
+
+    def get_message_count(self) -> int:
+        """
+        Retourne le nombre total de messages dans l'historique courant.
+
+        Returns:
+            Nombre de messages.
+        """
+        return len(self.messages)

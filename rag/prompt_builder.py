@@ -1,115 +1,175 @@
 """
-rag/prompt_builder.py — Construction des prompts.
+rag/prompt_builder.py — Construction des prompts pour le pipeline RAG.
 
-Construit les prompts système et utilisateur pour le pipeline RAG.
-Intègre le contexte documentaire, l'historique de conversation
-et les préférences utilisateur.
+Définit les templates de prompts utilisés pour la génération de réponses,
+le résumé de documents et l'analyse des lacunes de connaissances.
+Utilise LangChain PromptTemplate pour un formatage structuré.
 """
 
-from typing import Optional
+import logging
+
+from langchain.prompts import PromptTemplate
+
+logger = logging.getLogger("cogniassist.rag")
 
 
 class PromptBuilder:
     """
-    Constructeur de prompts pour le pipeline RAG.
+    Constructeur de prompts pour le pipeline RAG CogniAssist.
 
-    Assemble les différentes parties du prompt :
-    - Instructions système
-    - Contexte documentaire (documents retrouvés)
-    - Historique de conversation
-    - Contexte utilisateur (profil, préférences)
+    Templates disponibles :
+    - rag_template : prompt principal de question-réponse
+    - summary_template : résumé structuré d'un document
+    - knowledge_gap_template : analyse des lacunes de connaissances
     """
 
-    DEFAULT_SYSTEM_TEMPLATE: str = """Tu es CogniAssist, un assistant cognitif intelligent et personnalisé.
-Tu aides les utilisateurs à comprendre et exploiter leurs documents.
+    def __init__(self) -> None:
+        """Initialise les templates de prompts."""
 
-RÈGLES :
-- Réponds UNIQUEMENT à partir du contexte fourni ci-dessous.
-- Si l'information n'est pas dans le contexte, dis-le clairement.
-- Cite les sources pertinentes dans ta réponse.
-- Réponds dans la langue de la question.
-- Sois précis, structuré et utile.
+        self.rag_template = PromptTemplate(
+            input_variables=["context", "question", "user_profile", "chat_history"],
+            template="""Tu es CogniAssist, un assistant cognitif intelligent et personnalisé.
+Tu aides l'utilisateur à exploiter ses propres documents et connaissances personnelles.
 
-{user_context_section}
+Profil utilisateur :
+{user_profile}
 
-CONTEXTE DOCUMENTAIRE :
+Historique de la conversation :
+{chat_history}
+
+Contexte extrait de tes documents personnels :
 {context}
-"""
 
-    def __init__(self, system_template: Optional[str] = None) -> None:
-        """
-        Initialise le constructeur de prompts.
+Question de l'utilisateur :
+{question}
 
-        Args:
-            system_template: Template personnalisé pour le prompt système.
-        """
-        self.system_template = system_template or self.DEFAULT_SYSTEM_TEMPLATE
+Instructions :
+- Réponds uniquement en te basant sur le contexte fourni
+- Si le contexte ne contient pas la réponse, dis-le clairement
+- Adapte le niveau de détail au profil utilisateur
+- Réponds toujours en français sauf si l'utilisateur écrit en anglais
+- Sois concis mais complet
+- Si tu cites un document, mentionne son nom
 
-    def build_system_prompt(
-        self,
-        context: str,
-        user_context: Optional[str] = None,
-    ) -> str:
-        """
-        Construit le prompt système avec le contexte documentaire.
-
-        Args:
-            context: Le contexte documentaire retrouvé.
-            user_context: Informations sur le profil utilisateur.
-
-        Returns:
-            Le prompt système formaté.
-        """
-        user_context_section = ""
-        if user_context:
-            user_context_section = f"\nPROFIL UTILISATEUR :\n{user_context}\n"
-
-        return self.system_template.format(
-            context=context,
-            user_context_section=user_context_section,
+Réponse :""",
         )
 
-    @staticmethod
-    def build_conversation_prompt(
+        self.summary_template = PromptTemplate(
+            input_variables=["document_content", "file_name"],
+            template="""Tu es CogniAssist. Génère un résumé structuré du document suivant.
+
+Nom du fichier : {file_name}
+
+Contenu du document :
+{document_content}
+
+Génère un résumé avec exactement cette structure :
+## Résumé de {file_name}
+
+**Points clés :**
+- (liste des 3 à 5 points les plus importants)
+
+**Thèmes principaux :**
+- (liste des thèmes abordés)
+
+**Conclusion :**
+(une phrase résumant l'essentiel)""",
+        )
+
+        self.knowledge_gap_template = PromptTemplate(
+            input_variables=["documents_summary", "user_goals"],
+            template="""Tu es CogniAssist. Analyse les documents de l'utilisateur
+et identifie ses lacunes de connaissances.
+
+Résumé des documents disponibles :
+{documents_summary}
+
+Objectifs de l'utilisateur :
+{user_goals}
+
+Identifie :
+1. Ce que l'utilisateur maîtrise bien (basé sur ses documents)
+2. Les lacunes importantes par rapport à ses objectifs
+3. Les ressources ou sujets qu'il devrait explorer
+
+Réponds de manière constructive et encourageante.""",
+        )
+
+        logger.debug("PromptBuilder initialisé avec 3 templates.")
+
+    def build_rag_prompt(
+        self,
         question: str,
-        history: Optional[list[dict]] = None,
+        context: str,
+        chat_history: str = "",
+        user_profile: str = "Étudiant en Master Data Science",
     ) -> str:
         """
-        Construit le prompt de conversation avec l'historique.
+        Formate le prompt RAG principal avec toutes les variables.
 
         Args:
-            question: La question actuelle de l'utilisateur.
-            history: Historique des échanges précédents.
+            question: La question de l'utilisateur.
+            context: Le contexte documentaire retrouvé.
+            chat_history: L'historique de conversation formaté.
+            user_profile: Description du profil utilisateur.
 
         Returns:
-            Le prompt de conversation formaté.
+            Le prompt complet formaté prêt pour le LLM.
         """
-        parts: list[str] = []
+        return self.rag_template.format(
+            question=question,
+            context=context,
+            chat_history=chat_history or "(aucun historique)",
+            user_profile=user_profile,
+        )
 
-        if history:
-            parts.append("HISTORIQUE DE CONVERSATION :")
-            for exchange in history[-5:]:  # Limiter aux 5 derniers échanges
-                parts.append(f"Utilisateur : {exchange.get('question', '')}")
-                parts.append(f"Assistant : {exchange.get('answer', '')}")
-            parts.append("")
-
-        parts.append(f"Question actuelle : {question}")
-
-        return "\n".join(parts)
-
-    @staticmethod
-    def build_summary_prompt(text: str) -> str:
+    def build_summary_prompt(
+        self,
+        document_content: str,
+        file_name: str,
+    ) -> str:
         """
-        Construit un prompt pour résumer un texte.
+        Formate le prompt de résumé de document.
+
+        Tronque le contenu à 3000 caractères si nécessaire
+        pour éviter un dépassement de la fenêtre de contexte.
 
         Args:
-            text: Le texte à résumer.
+            document_content: Le contenu textuel du document.
+            file_name: Le nom du fichier source.
 
         Returns:
-            Le prompt de résumé.
+            Le prompt de résumé formaté.
         """
-        return (
-            "Résume le texte suivant de manière concise et structurée. "
-            "Identifie les points clés et organise-les en une liste.\n\n"
-            f"TEXTE :\n{text}"
+        max_content_length = 3000
+        if len(document_content) > max_content_length:
+            document_content = document_content[:max_content_length] + "\n\n[... contenu tronqué ...]"
+            logger.debug(
+                "Contenu tronqué à %d caractères pour le résumé de '%s'.",
+                max_content_length, file_name,
+            )
+
+        return self.summary_template.format(
+            document_content=document_content,
+            file_name=file_name,
+        )
+
+    def build_knowledge_gap_prompt(
+        self,
+        documents_summary: str,
+        user_goals: str,
+    ) -> str:
+        """
+        Formate le prompt d'analyse des lacunes de connaissances.
+
+        Args:
+            documents_summary: Résumé des documents disponibles.
+            user_goals: Objectifs déclarés de l'utilisateur.
+
+        Returns:
+            Le prompt d'analyse formaté.
+        """
+        return self.knowledge_gap_template.format(
+            documents_summary=documents_summary,
+            user_goals=user_goals,
         )
