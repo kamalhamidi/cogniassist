@@ -1,82 +1,180 @@
 """
 user/recommender.py — Recommandations personnalisées.
 
-Analyse le profil et l'historique de l'utilisateur pour fournir
-des recommandations de documents et de sujets pertinents.
+Analyse le profil et l'historique de l'utilisateur pour suggérer
+des questions, recommander des documents, et adapter les paramètres RAG.
 """
 
-from typing import Optional
+import logging
+from datetime import datetime, timedelta
+
+from user.profile import UserProfileManager
+from user.history import InteractionHistory
+
+logger = logging.getLogger("cogniassist.user")
+
+# Questions génériques de secours
+DEFAULT_QUESTIONS = [
+    "Quels sont les points clés de mes documents ?",
+    "Peux-tu résumer mon document le plus récent ?",
+    "Quels sujets devrais-je approfondir selon mes objectifs ?",
+    "Quelles sont les notions essentielles dans mes documents ?",
+    "Fais-moi un récapitulatif de ce que j'ai appris.",
+]
 
 
-class Recommender:
+class PersonalizedRecommender:
     """
-    Système de recommandation personnalisée.
+    Recommandations personnalisées basées sur le profil et l'historique.
 
-    Analyse les interactions passées et le profil utilisateur
-    pour suggérer des documents ou sujets d'intérêt.
+    Suggère des questions, recommande des documents à relire,
+    et adapte les paramètres du pipeline RAG au niveau de l'utilisateur.
     """
 
-    def __init__(self, db_manager=None) -> None:
+    def __init__(self, user_id: str = "default") -> None:
         """
         Initialise le recommandeur.
 
         Args:
-            db_manager: Instance de DatabaseManager pour accéder aux données.
-        """
-        self.db = db_manager
-
-    def get_recommended_topics(self, user_id: str, limit: int = 5) -> list[str]:
-        """
-        Suggère des sujets basés sur l'historique de l'utilisateur.
-
-        Args:
             user_id: Identifiant de l'utilisateur.
-            limit: Nombre de suggestions à retourner.
+        """
+        self.user_id = user_id
+        self.profile_manager = UserProfileManager(user_id)
+        self.history = InteractionHistory(user_id)
+
+    def get_suggested_questions(self) -> list[str]:
+        """
+        Suggère 5 questions pertinentes pour l'utilisateur.
+
+        Combine le profil, les sujets fréquents et les documents
+        uploadés pour générer des suggestions contextuelles.
 
         Returns:
-            Liste de sujets recommandés.
+            Liste de 5 questions suggérées.
         """
-        # TODO: Implémenter l'analyse des sujets fréquents
-        pass
+        profile = self.profile_manager.get_profile()
+        topics = self.history.get_frequent_topics(limit=3)
+        documents = self.profile_manager.get_user_documents()
 
-    def get_similar_questions(self, question: str, user_id: str, limit: int = 5) -> list[dict]:
+        suggestions: list[str] = []
+
+        # Questions basées sur les domaines d'intérêt
+        for domain in profile.get("domain_focus", [])[:2]:
+            suggestions.append(
+                f"Que disent mes documents sur {domain} ?"
+            )
+
+        # Questions basées sur les documents uploadés
+        if documents:
+            recent_doc = documents[0]["file_name"]
+            suggestions.append(
+                f"Peux-tu résumer le document '{recent_doc}' ?"
+            )
+
+        # Questions basées sur les sujets fréquents
+        for topic in topics[:2]:
+            suggestions.append(
+                f"Explique-moi davantage le concept de {topic}."
+            )
+
+        # Compléter avec les questions génériques
+        for q in DEFAULT_QUESTIONS:
+            if len(suggestions) >= 5:
+                break
+            if q not in suggestions:
+                suggestions.append(q)
+
+        return suggestions[:5]
+
+    def get_document_recommendations(self) -> list[dict]:
         """
-        Trouve des questions similaires posées dans le passé.
+        Recommande des documents à relire.
 
-        Args:
-            question: La question actuelle.
-            user_id: Identifiant de l'utilisateur.
-            limit: Nombre de résultats.
+        Identifie les documents jamais consultés ou non consultés
+        depuis plus de 7 jours.
 
         Returns:
-            Liste de questions similaires avec leurs réponses.
+            Liste de recommandations avec raison.
         """
-        # TODO: Implémenter la recherche par similarité dans l'historique
-        pass
+        documents = self.profile_manager.get_user_documents()
+        recommendations: list[dict] = []
+        cutoff = datetime.utcnow() - timedelta(days=7)
 
-    def adapt_response_style(self, user_id: str) -> dict:
+        for doc in documents:
+            if doc["access_count"] == 0:
+                recommendations.append({
+                    "file_name": doc["file_name"],
+                    "reason": "Jamais consulté",
+                    "upload_date": doc["upload_date"],
+                })
+            elif doc["last_accessed"]:
+                try:
+                    last = datetime.fromisoformat(doc["last_accessed"])
+                    if last < cutoff:
+                        recommendations.append({
+                            "file_name": doc["file_name"],
+                            "reason": "Non consulté depuis 7 jours",
+                            "upload_date": doc["upload_date"],
+                        })
+                except (ValueError, TypeError):
+                    pass
+
+        return recommendations
+
+    def adapt_rag_parameters(self) -> dict:
         """
-        Adapte le style de réponse au profil utilisateur.
-
-        Args:
-            user_id: Identifiant de l'utilisateur.
+        Adapte les paramètres RAG au niveau de l'utilisateur.
 
         Returns:
-            Dictionnaire de paramètres de style (verbosité, langue, etc.).
+            Dictionnaire avec k, user_profile et temperature.
         """
-        # TODO: Analyser le profil et l'historique pour adapter le style
-        pass
+        profile = self.profile_manager.get_profile()
+        level = profile.get("expertise_level", "intermediate")
 
-    def get_user_context_string(self, user_id: str) -> Optional[str]:
+        params = {
+            "beginner": {"k": 3, "temperature": 0.2},
+            "intermediate": {"k": 5, "temperature": 0.3},
+            "expert": {"k": 8, "temperature": 0.4},
+        }
+
+        level_params = params.get(level, params["intermediate"])
+
+        return {
+            "k": level_params["k"],
+            "user_profile": self.profile_manager.get_personalization_context(),
+            "temperature": level_params["temperature"],
+        }
+
+    def get_learning_progress(self) -> dict:
         """
-        Génère une description textuelle du contexte utilisateur
-        pour l'injecter dans le prompt RAG.
-
-        Args:
-            user_id: Identifiant de l'utilisateur.
+        Calcule un rapport de progression d'apprentissage.
 
         Returns:
-            Description du profil utilisateur ou None.
+            Dictionnaire avec métriques de progression et score 0-100.
         """
-        # TODO: Construire le contexte à partir du profil et de l'historique
-        pass
+        documents = self.profile_manager.get_user_documents()
+        stats = self.history.get_interaction_stats()
+        topics = self.history.get_frequent_topics(limit=10)
+
+        docs_count = len(documents)
+        docs_with_summary = sum(1 for d in documents if d["has_summary"])
+        total_questions = stats["total_interactions"]
+        positive = stats["positive_feedback"]
+        negative = stats["negative_feedback"]
+        total_feedback = positive + negative
+
+        # Taux de feedback positif
+        feedback_rate = round((positive / total_feedback) * 100, 1) if total_feedback > 0 else 0.0
+
+        # Score de connaissance : docs * 10 + questions * 2, plafonné à 100
+        raw_score = docs_count * 10 + total_questions * 2
+        knowledge_score = min(raw_score, 100)
+
+        return {
+            "documents_uploaded": docs_count,
+            "documents_with_summary": docs_with_summary,
+            "total_questions_asked": total_questions,
+            "topics_explored": topics,
+            "positive_feedback_rate": feedback_rate,
+            "knowledge_score": knowledge_score,
+        }

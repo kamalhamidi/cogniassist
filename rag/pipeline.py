@@ -10,6 +10,7 @@ Orchestre le flux complet de Retrieval-Augmented Generation :
 """
 
 import logging
+import time
 from typing import Generator, Optional
 
 from langchain_ollama import ChatOllama
@@ -81,22 +82,22 @@ class RAGPipeline:
     def ask(
         self,
         question: str,
-        user_profile: str = "Étudiant en Master Data Science",
+        user_id: str = "default",
         k: int = 5,
         filter_metadata: dict | None = None,
     ) -> dict:
         """
-        Exécute une requête RAG complète.
+        Exécute une requête RAG complète avec personnalisation.
 
         Args:
             question: La question de l'utilisateur.
-            user_profile: Description du profil utilisateur.
+            user_id: Identifiant de l'utilisateur pour la personnalisation.
             k: Nombre de chunks à récupérer.
             filter_metadata: Filtre optionnel sur les métadonnées.
 
         Returns:
             Dictionnaire avec answer, sources, question, chunks_used,
-            model_used et context_length.
+            model_used, context_length et interaction_id.
 
         Raises:
             RuntimeError: Si Ollama n'est pas disponible.
@@ -106,6 +107,15 @@ class RAGPipeline:
                 "Le pipeline RAG n'est pas prêt. "
                 f"Veuillez lancer Ollama : ollama run {settings.ollama_model}"
             )
+
+        start_time = time.time()
+
+        # 0. Personnalisation via le profil utilisateur
+        from user import get_recommender, get_interaction_history
+        rec = get_recommender(user_id)
+        params = rec.adapt_rag_parameters()
+        k = params["k"]
+        user_profile = params["user_profile"]
 
         # 1. Récupérer les chunks pertinents
         chunks = self.retriever.retrieve(
@@ -141,7 +151,18 @@ class RAGPipeline:
         self.memory.add_user_message(question)
         self.memory.add_assistant_message(answer)
 
-        # 7. Construire les sources
+        # 7. Calculer le temps de réponse et sauvegarder dans l'historique
+        response_time_ms = int((time.time() - start_time) * 1000)
+        history = get_interaction_history(user_id)
+        interaction_id = history.save_interaction(
+            question=question,
+            answer=answer,
+            sources=[c.metadata.get("file_name", "") for c in chunks],
+            chunks_used=len(chunks),
+            response_time_ms=response_time_ms,
+        )
+
+        # 8. Construire les sources
         sources = [
             {
                 "file_name": c.metadata.get("file_name", "inconnu"),
@@ -159,6 +180,7 @@ class RAGPipeline:
             "chunks_used": len(chunks),
             "model_used": settings.ollama_model,
             "context_length": len(context),
+            "interaction_id": interaction_id,
         }
 
     def ask_stream(
