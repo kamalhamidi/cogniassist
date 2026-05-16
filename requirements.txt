@@ -10,6 +10,7 @@ ollama==0.4.8
 # === Embeddings & Vectorstore ===
 chromadb==1.0.7
 sentence-transformers==4.1.0
+langchain-huggingface==0.2.0
 
 # === Ingestion de documents ===
 pymupdf==1.25.5

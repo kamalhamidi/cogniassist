@@ -1,87 +1,148 @@
 """
-vectorstore/embedder.py — Génération d'embeddings.
+vectorstore/embedder.py — Gestion des modèles d'embeddings.
 
-Utilise Ollama pour générer des vecteurs d'embeddings
-à partir de texte. Le modèle est configurable via les settings.
+Utilise Ollama comme modèle principal d'embeddings et
+HuggingFace (Sentence-Transformers) comme fallback automatique
+si Ollama n'est pas accessible.
 """
 
+import logging
 from typing import Optional
 
 from langchain_ollama import OllamaEmbeddings
 
+from config import settings
 
-class Embedder:
+logger = logging.getLogger("cogniassist.vectorstore")
+
+
+class EmbeddingManager:
     """
-    Génère des embeddings vectoriels à partir de texte.
+    Gestionnaire d'embeddings avec basculement automatique.
 
-    Utilise un modèle Ollama configurable pour
-    encoder des passages de texte en vecteurs denses.
+    Priorité : Ollama (nomic-embed-text) → HuggingFace (fallback local).
+    Le basculement est transparent pour l'appelant.
     """
 
-    def __init__(self, model_name: Optional[str] = None) -> None:
+    def __init__(self) -> None:
         """
-        Initialise l'embedder avec le modèle spécifié.
+        Initialise le modèle Ollama principal et le fallback HuggingFace.
 
-        Args:
-            model_name: Nom du modèle d'embeddings Ollama.
-                        Si None, utilise le modèle défini dans les settings.
+        Le modèle Ollama est configuré via settings.embedding_model
+        et settings.ollama_base_url. Le fallback HuggingFace utilise
+        paraphrase-multilingual-mpnet-base-v2 sur CPU.
         """
-        from config import settings
+        # Modèle principal : Ollama
+        self.embeddings = OllamaEmbeddings(
+            model=settings.embedding_model,
+            base_url=settings.ollama_base_url,
+        )
 
-        self.model_name = model_name or settings.embedding_model
-        self.base_url = settings.ollama_base_url
-        self._model: Optional[OllamaEmbeddings] = None
-        self._dimension: Optional[int] = None
+        # Fallback : HuggingFace (chargé à la demande)
+        self._fallback_embeddings = None
+        self.active_model: str = "ollama"
+
+        logger.info(
+            "EmbeddingManager initialisé — modèle : %s (Ollama @ %s)",
+            settings.embedding_model, settings.ollama_base_url,
+        )
 
     @property
-    def model(self) -> OllamaEmbeddings:
-        """Charge le modèle en lazy-loading (chargé au premier appel)."""
-        if self._model is None:
-            print(f"🔄 Chargement du modèle d'embeddings : {self.model_name}...")
-            self._model = OllamaEmbeddings(
-                model=self.model_name,
-                base_url=self.base_url,
+    def fallback_embeddings(self):
+        """Charge le modèle HuggingFace en lazy-loading."""
+        if self._fallback_embeddings is None:
+            logger.info("Chargement du modèle fallback HuggingFace…")
+            from langchain_huggingface import HuggingFaceEmbeddings
+
+            self._fallback_embeddings = HuggingFaceEmbeddings(
+                model_name="paraphrase-multilingual-mpnet-base-v2",
+                model_kwargs={"device": "cpu"},
+                encode_kwargs={"normalize_embeddings": True},
             )
-            print("✅ Modèle chargé avec succès.")
-        return self._model
+            logger.info("Modèle fallback HuggingFace chargé avec succès.")
+        return self._fallback_embeddings
 
-    def embed_text(self, text: str) -> list[float]:
-        """
-        Génère un embedding pour un seul texte.
-
-        Args:
-            text: Le texte à encoder.
-
-        Returns:
-            Vecteur d'embedding sous forme de liste de floats.
-        """
-        embedding = self.model.embed_query(text)
-        if self._dimension is None:
-            self._dimension = len(embedding)
-        return embedding
-
-    def embed_texts(self, texts: list[str], batch_size: int = 32) -> list[list[float]]:
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
         """
         Génère des embeddings pour une liste de textes.
 
+        Tente Ollama en premier. En cas d'échec de connexion,
+        bascule automatiquement vers le modèle HuggingFace.
+
         Args:
             texts: Liste de textes à encoder.
-            batch_size: Taille des lots pour le traitement.
 
         Returns:
-            Liste de vecteurs d'embeddings.
+            Liste de vecteurs d'embeddings (liste de floats).
         """
         if not texts:
             return []
 
-        embeddings = self.model.embed_documents(texts)
-        if self._dimension is None and embeddings:
-            self._dimension = len(embeddings[0])
-        return embeddings
+        # Essayer Ollama en premier
+        try:
+            result = self.embeddings.embed_documents(texts)
+            self.active_model = "ollama"
+            return result
+        except Exception as e:
+            logger.warning(
+                "Ollama indisponible pour embed_documents : %s — "
+                "basculement vers HuggingFace",
+                str(e),
+            )
+            self.active_model = "huggingface"
+            return self.fallback_embeddings.embed_documents(texts)
 
-    @property
-    def embedding_dimension(self) -> int:
-        """Retourne la dimension des embeddings du modèle."""
-        if self._dimension is None:
-            self._dimension = len(self.embed_text("dimension probe"))
-        return self._dimension
+    def embed_query(self, query: str) -> list[float]:
+        """
+        Génère un embedding pour une requête unique.
+
+        Même logique de fallback que embed_documents.
+        Utilisé au moment de la recherche par similarité.
+
+        Args:
+            query: Texte de la requête.
+
+        Returns:
+            Vecteur d'embedding (liste de floats).
+        """
+        # Essayer Ollama en premier
+        try:
+            result = self.embeddings.embed_query(query)
+            self.active_model = "ollama"
+            return result
+        except Exception as e:
+            logger.warning(
+                "Ollama indisponible pour embed_query : %s — "
+                "basculement vers HuggingFace",
+                str(e),
+            )
+            self.active_model = "huggingface"
+            return self.fallback_embeddings.embed_query(query)
+
+    def get_active_model(self) -> str:
+        """
+        Retourne le nom du modèle d'embeddings actuellement actif.
+
+        Utile pour l'affichage dans l'interface utilisateur.
+
+        Returns:
+            Nom du modèle actif ("ollama" ou "huggingface").
+        """
+        return self.active_model
+
+    def test_connection(self) -> bool:
+        """
+        Teste si Ollama est accessible en encodant un texte court.
+
+        Ne lève jamais d'exception — attrape toutes les erreurs en interne.
+
+        Returns:
+            True si Ollama répond, False sinon.
+        """
+        try:
+            self.embeddings.embed_query("test")
+            logger.info("Test de connexion Ollama : succès ✅")
+            return True
+        except Exception as e:
+            logger.warning("Test de connexion Ollama : échec ❌ — %s", str(e))
+            return False

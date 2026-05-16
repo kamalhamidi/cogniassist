@@ -14,7 +14,7 @@ from typing import Optional
 from langchain_ollama import ChatOllama
 from langchain.schema import HumanMessage, SystemMessage
 
-from vectorstore.retriever import DocumentRetriever
+from vectorstore.retriever import SmartRetriever
 from rag.prompt_builder import PromptBuilder
 from rag.memory import ConversationMemory
 
@@ -29,7 +29,7 @@ class RAGPipeline:
 
     def __init__(
         self,
-        retriever: Optional[DocumentRetriever] = None,
+        retriever: Optional[SmartRetriever] = None,
         prompt_builder: Optional[PromptBuilder] = None,
         memory: Optional[ConversationMemory] = None,
         model_name: Optional[str] = None,
@@ -47,7 +47,7 @@ class RAGPipeline:
         """
         from config import settings
 
-        self.retriever = retriever or DocumentRetriever()
+        self.retriever = retriever or SmartRetriever()
         self.prompt_builder = prompt_builder or PromptBuilder()
         self.memory = memory or ConversationMemory()
 
@@ -76,8 +76,8 @@ class RAGPipeline:
             Dictionnaire avec la réponse, les sources et les métadonnées.
         """
         # 1. Recherche des documents pertinents
-        retrieved_docs = self.retriever.retrieve(question, n_results=n_docs)
-        context = self.retriever.retrieve_with_context(question, n_results=n_docs)
+        retrieved_docs = self.retriever.retrieve(question, k=n_docs or 5)
+        context = self.retriever.retrieve_with_context_window(question, k=n_docs or 3)
 
         # 2. Récupérer l'historique de conversation
         history = self.memory.get_history()
@@ -106,8 +106,8 @@ class RAGPipeline:
         # 6. Construire le résultat
         sources = [
             {
-                "content": doc.content[:200] + "...",
-                "score": doc.score,
+                "content": doc.page_content[:200] + "...",
+                "score": doc.metadata.get("similarity_score", 0.0),
                 "metadata": doc.metadata,
             }
             for doc in retrieved_docs

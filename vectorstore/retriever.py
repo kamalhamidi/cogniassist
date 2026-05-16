@@ -1,125 +1,89 @@
 """
-vectorstore/retriever.py — Recherche par similarité.
+vectorstore/retriever.py — Recherche intelligente par similarité.
 
-Combine l'embedder et le vector store pour rechercher les documents
-les plus pertinents en fonction d'une requête utilisateur.
+Combine le VectorStore avec un reranking par chevauchement de mots-clés
+pour améliorer la pertinence des résultats.
 """
 
+import logging
 from typing import Optional
-from dataclasses import dataclass
-
-from vectorstore.embedder import Embedder
+from langchain.schema import Document
 from vectorstore.store import VectorStore
 
+logger = logging.getLogger("cogniassist.vectorstore")
 
-@dataclass
-class RetrievedDocument:
-    """Représente un document retrouvé par similarité."""
+STOPWORDS_FR = frozenset([
+    "le", "la", "les", "de", "du", "des", "un", "une", "et", "en",
+    "à", "au", "aux", "ce", "qui", "que", "par", "sur", "dans",
+    "est", "sont", "avec", "pour", "pas", "ne", "se", "sa", "son",
+])
+STOPWORDS_EN = frozenset([
+    "the", "a", "an", "of", "in", "is", "are", "and", "to",
+    "for", "with", "on", "it", "this", "that", "was", "be",
+])
+STOPWORDS = STOPWORDS_FR | STOPWORDS_EN
 
-    content: str
-    score: float
-    metadata: dict
 
+class SmartRetriever:
+    """Retriever intelligent avec reranking par mots-clés."""
 
-class DocumentRetriever:
-    """
-    Recherche des documents pertinents par similarité sémantique.
-
-    Combine un Embedder pour vectoriser la requête et un VectorStore
-    pour retrouver les documents les plus proches.
-    """
-
-    def __init__(
-        self,
-        embedder: Optional[Embedder] = None,
-        store: Optional[VectorStore] = None,
-        max_results: Optional[int] = None,
-    ) -> None:
-        """
-        Initialise le retriever.
-
-        Args:
-            embedder: Instance de l'Embedder. Si None, en crée un par défaut.
-            store: Instance du VectorStore. Si None, en crée un par défaut.
-            max_results: Nombre maximum de documents à retourner.
-        """
-        self.embedder = embedder or Embedder()
-        self.store = store or VectorStore()
-
-        if max_results is None:
-            from config import settings
-            max_results = settings.MAX_RETRIEVED_DOCS
-
-        self.max_results = max_results
+    def __init__(self, vector_store: Optional[VectorStore] = None) -> None:
+        """Initialise le retriever avec un VectorStore."""
+        self.vector_store = vector_store or VectorStore()
+        self.use_reranking: bool = True
+        self.min_similarity_score: float = 0.3
 
     def retrieve(
-        self,
-        query: str,
-        n_results: Optional[int] = None,
-        where: Optional[dict] = None,
-    ) -> list[RetrievedDocument]:
-        """
-        Recherche les documents les plus pertinents pour une requête.
-
-        Args:
-            query: La requête utilisateur en langage naturel.
-            n_results: Nombre de résultats (override max_results).
-            where: Filtre optionnel sur les métadonnées.
-
-        Returns:
-            Liste de RetrievedDocument triés par pertinence.
-        """
-        n = n_results or self.max_results
-
-        # Générer l'embedding de la requête
-        query_embedding = self.embedder.embed_text(query)
-
-        # Rechercher dans la base vectorielle
-        results = self.store.query(
-            query_embedding=query_embedding,
-            n_results=n,
-            where=where,
+        self, query: str, k: int = 5, filter_metadata: dict | None = None,
+    ) -> list[Document]:
+        """Récupère les k documents les plus pertinents."""
+        candidates = self.vector_store.similarity_search_with_score(
+            query=query, k=k * 2, filter_metadata=filter_metadata,
         )
+        if not candidates:
+            return []
 
-        # Construire les résultats
-        retrieved: list[RetrievedDocument] = []
-        if results and results.get("documents"):
-            documents = results["documents"][0]
-            distances = results["distances"][0] if results.get("distances") else [0.0] * len(documents)
-            metadatas = results["metadatas"][0] if results.get("metadatas") else [{}] * len(documents)
+        filtered = [(d, s) for d, s in candidates if s >= self.min_similarity_score]
+        if not filtered:
+            return []
 
-            for doc, dist, meta in zip(documents, distances, metadatas):
-                retrieved.append(
-                    RetrievedDocument(
-                        content=doc,
-                        score=1.0 - dist,  # Cosine distance → similarity
-                        metadata=meta,
-                    )
-                )
+        if self.use_reranking:
+            filtered = self._rerank(query, filtered)
 
-        return retrieved
+        return [doc for doc, _ in filtered[:k]]
 
-    def retrieve_with_context(self, query: str, n_results: Optional[int] = None) -> str:
-        """
-        Recherche et formate les documents pertinents en contexte texte.
+    def _rerank(
+        self, query: str, candidates: list[tuple[Document, float]],
+    ) -> list[tuple[Document, float]]:
+        """Reranking hybride : 0.7 × similarité + 0.3 × mots-clés."""
+        query_keywords = {
+            w.lower() for w in query.split()
+            if w.lower() not in STOPWORDS and len(w) > 1
+        }
+        if not query_keywords:
+            return candidates
 
-        Args:
-            query: La requête utilisateur.
-            n_results: Nombre de résultats.
+        reranked: list[tuple[Document, float]] = []
+        for doc, sim_score in candidates:
+            text_lower = doc.page_content.lower()
+            matches = sum(1 for kw in query_keywords if kw in text_lower)
+            kw_score = matches / len(query_keywords)
+            combined = 0.7 * sim_score + 0.3 * kw_score
+            reranked.append((doc, combined))
 
-        Returns:
-            Texte formaté avec les documents pertinents.
-        """
-        documents = self.retrieve(query, n_results=n_results)
+        reranked.sort(key=lambda x: x[1], reverse=True)
+        return reranked
 
+    def retrieve_with_context_window(self, query: str, k: int = 3) -> str:
+        """Formate les top-k chunks en contexte pour le prompt RAG."""
+        documents = self.retrieve(query, k=k)
         if not documents:
             return "Aucun document pertinent trouvé."
 
-        context_parts: list[str] = []
-        for i, doc in enumerate(documents, 1):
-            source = doc.metadata.get("filename", "source inconnue")
-            context_parts.append(
-                f"[Document {i} — {source} (score: {doc.score:.2f})]\n{doc.content}"
-            )
+        parts: list[str] = []
+        for i, doc in enumerate(documents):
+            fn = doc.metadata.get("file_name", "source inconnue")
+            pg = doc.metadata.get("page_number", "—")
+            parts.append(f"--- Document {i+1} (source: {fn}, page: {pg}) ---\n{doc.page_content}")
 
-        return "\n\n---\n\n".join(context_parts)
+        return "\n\n".join(parts)
