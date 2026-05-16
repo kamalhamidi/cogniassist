@@ -1,79 +1,152 @@
 """
-pages/dashboard.py — Page de statistiques et visualisations.
+pages/dashboard.py — Tableau de bord analytique.
 
-Affiche des métriques clés, des graphiques d'utilisation et
-des statistiques sur les interactions et la base de connaissances.
+Affiche les KPIs, l'activité récente, les sujets explorés,
+les statistiques par document et les recommandations.
 """
 
 import streamlit as st
+from collections import Counter
 
 
-def render_dashboard_page() -> None:
-    """Affiche la page de dashboard avec statistiques."""
-    st.header("📊 Dashboard")
-    st.markdown("Vue d'ensemble de votre activité CogniAssist.")
+@st.cache_data(ttl=60)
+def _load_dashboard_data(user_id: str) -> dict:
+    """Charge toutes les données du tableau de bord (cache 1 min)."""
+    from user import get_interaction_history, get_recommender, get_user_manager
 
-    # Métriques principales
-    col1, col2, col3, col4 = st.columns(4)
+    history = get_interaction_history(user_id)
+    rec = get_recommender(user_id)
+    mgr = get_user_manager(user_id)
 
-    with col1:
-        try:
-            from vectorstore.store import VectorStore
-            store = VectorStore()
-            st.metric("📄 Chunks indexés", store.count())
-        except Exception:
-            st.metric("📄 Chunks indexés", 0)
+    return {
+        "stats": history.get_interaction_stats(),
+        "progress": rec.get_learning_progress(),
+        "docs": mgr.get_user_documents(),
+        "topics": history.get_frequent_topics(10),
+        "recent": history.get_recent_history(10),
+    }
 
-    with col2:
-        st.metric("💬 Messages", len(st.session_state.get("messages", [])))
 
-    with col3:
-        st.metric("👤 Utilisateur", st.session_state.get("user_id", "default"))
+def show_dashboard_page() -> None:
+    """Affiche le tableau de bord."""
+    user_id = st.session_state.get("user_id", "default")
 
-    with col4:
-        from config import settings
-        st.metric("🤖 Modèle", settings.ollama_model)
+    st.title("📊 Tableau de bord")
+    st.caption("Votre activité et progression sur CogniAssist")
 
-    st.markdown("---")
+    # Charger les données
+    try:
+        data = _load_dashboard_data(user_id)
+    except Exception as e:
+        st.error(f"Erreur chargement données : {e}")
+        return
 
-    # Graphiques (placeholder)
-    st.subheader("📈 Activité récente")
-    st.info(
-        "Les graphiques d'activité seront disponibles après quelques interactions. "
-        "Commencez par importer des documents et poser des questions !"
-    )
+    stats = data["stats"]
+    progress = data["progress"]
 
-    # Section historique
-    st.subheader("🕐 Dernières interactions")
-    messages = st.session_state.get("messages", [])
-    if messages:
-        for msg in reversed(messages[-10:]):
-            role = "🧑 Vous" if msg["role"] == "user" else "🤖 CogniAssist"
-            content = msg["content"][:150] + "..." if len(msg["content"]) > 150 else msg["content"]
-            st.markdown(f"**{role}** : {content}")
+    # ═══ Section 1 : KPIs ═══
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("📚 Documents", progress["documents_uploaded"])
+    c2.metric("💬 Questions posées", stats["total_interactions"])
+    c3.metric("⭐ Score de connaissance", f"{progress['knowledge_score']}/100")
+    c4.metric("👍 Taux de satisfaction", f"{progress['positive_feedback_rate']:.0f}%")
+
+    st.divider()
+
+    # ═══ Section 2 : Activité + Sujets ═══
+    col_left, col_right = st.columns(2)
+
+    with col_left:
+        st.subheader("📈 Activité récente")
+        recent = data["recent"]
+        if recent:
+            # Compter les interactions par jour
+            day_counts: Counter = Counter()
+            for r in recent:
+                date_str = r.get("created_at", "")[:10]
+                if date_str:
+                    day_counts[date_str] += 1
+
+            if day_counts:
+                import pandas as pd
+                df = pd.DataFrame(
+                    list(day_counts.items()), columns=["Date", "Interactions"]
+                ).sort_values("Date")
+                st.bar_chart(df.set_index("Date"))
+            else:
+                st.info("Aucune donnée d'activité")
+        else:
+            st.info("Aucune activité enregistrée")
+
+    with col_right:
+        st.subheader("🏷️ Sujets explorés")
+        topics = data["topics"]
+        if topics:
+            for i, topic in enumerate(topics):
+                weight = (len(topics) - i) / len(topics)
+                st.write(f"**{topic}**")
+                st.progress(weight)
+        else:
+            st.info("Commencez à poser des questions pour voir vos sujets")
+
+    st.divider()
+
+    # ═══ Section 3 : Documents ═══
+    st.subheader("📂 Activité par document")
+    docs = data["docs"]
+    if docs:
+        import pandas as pd
+        df = pd.DataFrame([
+            {
+                "Document": d["file_name"],
+                "Chunks": d["chunk_count"],
+                "Consultations": d["access_count"],
+                "Résumé": "✅" if d["has_summary"] else "❌",
+                "Importé le": d["upload_date"][:10] if d["upload_date"] else "—",
+            }
+            for d in docs
+        ])
+        st.dataframe(df, use_container_width=True, hide_index=True)
     else:
-        st.caption("Aucune interaction pour le moment.")
+        st.info("Aucun document indexé")
 
-    st.markdown("---")
+    st.divider()
 
-    # Actions de maintenance
-    st.subheader("🔧 Maintenance")
-    col_a, col_b = st.columns(2)
+    # ═══ Section 4 : Dernières interactions ═══
+    st.subheader("🕐 Dernières interactions")
+    recent = data["recent"]
+    if recent:
+        for interaction in recent[:5]:
+            q_preview = interaction["question"][:80]
+            date_str = interaction.get("created_at", "")[:10]
+            with st.expander(f"❓ {q_preview}... — {date_str}"):
+                st.markdown("**Question :**")
+                st.write(interaction["question"])
+                st.markdown("**Réponse :**")
+                answer = interaction["answer"]
+                st.write(answer[:500] + "..." if len(answer) > 500 else answer)
+                if interaction["sources"]:
+                    st.caption(f"Sources : {', '.join(interaction['sources'])}")
+                fb = interaction.get("feedback")
+                if fb == 1:
+                    st.caption("Feedback : 👍")
+                elif fb == -1:
+                    st.caption("Feedback : 👎")
+    else:
+        st.info("Aucune interaction enregistrée. Commencez à chatter !")
 
-    with col_a:
-        if st.button("🗑️ Réinitialiser la base vectorielle", type="secondary"):
-            try:
-                from vectorstore.store import VectorStore
-                store = VectorStore()
-                store.reset()
-                st.session_state.documents_loaded = False
-                st.success("✅ Base vectorielle réinitialisée.")
-                st.rerun()
-            except Exception as e:
-                st.error(f"❌ Erreur : {str(e)}")
+    st.divider()
 
-    with col_b:
-        if st.button("🗑️ Vider l'historique de chat", type="secondary"):
-            st.session_state.messages = []
-            st.success("✅ Historique vidé.")
-            st.rerun()
+    # ═══ Section 5 : Recommandations ═══
+    st.subheader("💡 Recommandations")
+    try:
+        from user import get_recommender
+        rec = get_recommender(user_id)
+        doc_recs = rec.get_document_recommendations()
+        if doc_recs:
+            for r in doc_recs:
+                st.warning(f"📄 {r['file_name']} — {r['reason']}")
+        else:
+            st.success("✅ Tous vos documents ont été consultés récemment")
+    except Exception as e:
+        st.error(f"Erreur recommandations : {e}")

@@ -1,82 +1,165 @@
 """
 pages/chat.py — Page de chat intelligent.
 
-Interface conversationnelle Streamlit pour interagir avec le
-pipeline RAG. Affiche les messages, gère les entrées utilisateur
-et affiche les sources utilisées pour chaque réponse.
+Interface conversationnelle avec streaming, suggestions contextuelles,
+feedback utilisateur et affichage des sources.
 """
 
 import streamlit as st
 
 
-def render_chat_page() -> None:
+@st.cache_resource
+def _get_pipeline():
+    """Charge le pipeline RAG (cache persistant)."""
+    from rag import get_pipeline
+    return get_pipeline()
+
+
+@st.cache_data(ttl=300)
+def _get_suggestions(user_id: str) -> list[str]:
+    """Récupère les questions suggérées (cache 5 min)."""
+    from user import get_recommender
+    return get_recommender(user_id).get_suggested_questions()
+
+
+@st.cache_data(ttl=60)
+def _get_docs(user_id: str) -> list[dict]:
+    """Récupère la liste des documents (cache 1 min)."""
+    from user import get_user_manager
+    return get_user_manager(user_id).get_user_documents()
+
+
+def _save_feedback(interaction_id: int, feedback: int) -> None:
+    """Enregistre le feedback utilisateur."""
+    try:
+        from user import get_interaction_history
+        history = get_interaction_history(st.session_state.get("user_id", "default"))
+        history.save_feedback(interaction_id, feedback)
+        st.toast("Merci pour votre retour ! 👍" if feedback == 1 else "Retour enregistré 👎")
+    except Exception as e:
+        st.error(f"Erreur feedback : {e}")
+
+
+def show_chat_page() -> None:
     """Affiche la page de chat intelligent."""
-    st.header("💬 Chat Intelligent")
-    st.markdown("Posez vos questions sur vos documents. CogniAssist retrouve les informations pertinentes et génère une réponse.")
+    user_id = st.session_state.get("user_id", "default")
 
-    # Vérifier que des documents sont chargés
-    if not st.session_state.get("documents_loaded", False):
-        st.info("📄 Aucun document chargé. Rendez-vous sur la page **Upload** pour importer vos fichiers.")
+    # ═══ Layout : chat (7) + suggestions (3) ═══
+    col_chat, col_suggestions = st.columns([7, 3])
 
-    st.markdown("---")
+    # ─────────────────────────────────────────────
+    # Colonne droite : suggestions
+    # ─────────────────────────────────────────────
+    with col_suggestions:
+        st.subheader("💡 Questions suggérées")
 
-    # Afficher l'historique des messages
-    for message in st.session_state.get("messages", []):
-        role = message.get("role", "user")
-        content = message.get("content", "")
-        with st.chat_message(role):
-            st.markdown(content)
+        try:
+            suggestions = _get_suggestions(user_id)
+            for i, sug in enumerate(suggestions):
+                if st.button(sug, key=f"sug_{i}", use_container_width=True):
+                    st.session_state.messages.append({"role": "user", "content": sug})
+                    st.rerun()
+        except Exception:
+            st.caption("Suggestions indisponibles")
 
-            # Afficher les sources si disponibles
-            if role == "assistant" and "sources" in message:
-                with st.expander("📚 Sources utilisées"):
-                    for i, source in enumerate(message["sources"], 1):
-                        st.markdown(f"**Source {i}** — Score: {source.get('score', 'N/A'):.2f}")
-                        st.caption(source.get("content", ""))
+        st.divider()
+        st.subheader("📋 Documents disponibles")
 
-    # Zone de saisie
-    if prompt := st.chat_input("Posez votre question..."):
-        # Ajouter le message utilisateur
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
+        try:
+            docs = _get_docs(user_id)
+            if docs:
+                for doc in docs[:5]:
+                    st.caption(f"📄 {doc['file_name']} ({doc['chunk_count']} chunks)")
+            else:
+                st.caption("Aucun document importé")
+                if st.button("📁 Importer un document", key="goto_upload"):
+                    st.session_state.current_page = "📁 Documents"
+                    st.rerun()
+        except Exception:
+            st.caption("Erreur de chargement")
 
-        # Générer la réponse
-        with st.chat_message("assistant"):
-            with st.spinner("🔍 Recherche en cours..."):
-                try:
-                    from rag.pipeline import RAGPipeline
+    # ─────────────────────────────────────────────
+    # Colonne gauche : chat principal
+    # ─────────────────────────────────────────────
+    with col_chat:
+        st.title("💬 Chat intelligent")
+        st.caption("Posez vos questions sur vos documents personnels")
 
-                    pipeline = RAGPipeline()
-                    result = pipeline.query(prompt)
+        # Vérifier le pipeline
+        pipeline = _get_pipeline()
+        if not pipeline.is_ready:
+            st.warning(
+                "⚠️ Ollama n'est pas démarré. Lancez la commande suivante dans un terminal :"
+            )
+            st.code("ollama run mistral:7b", language="bash")
+            st.stop()
 
-                    answer = result["answer"]
-                    st.markdown(answer)
-
-                    # Afficher les sources
-                    if result.get("sources"):
-                        with st.expander("📚 Sources utilisées"):
-                            for i, source in enumerate(result["sources"], 1):
-                                st.markdown(f"**Source {i}** — Score: {source.get('score', 0):.2f}")
-                                st.caption(source.get("content", ""))
-
-                    # Sauvegarder dans l'historique
-                    st.session_state.messages.append({
-                        "role": "assistant",
-                        "content": answer,
-                        "sources": result.get("sources", []),
-                    })
-
-                except Exception as e:
-                    error_msg = f"❌ Erreur lors de la génération : {str(e)}"
-                    st.error(error_msg)
-                    st.session_state.messages.append({
-                        "role": "assistant",
-                        "content": error_msg,
-                    })
-
-    # Bouton pour vider la conversation
-    if st.session_state.get("messages"):
-        if st.sidebar.button("🗑️ Vider la conversation"):
+        # Bouton effacer
+        if st.button("🗑️ Effacer la conversation", key="clear_chat"):
             st.session_state.messages = []
+            pipeline.clear_memory()
+            st.rerun()
+
+        # Afficher l'historique
+        for idx, message in enumerate(st.session_state.messages):
+            avatar = "👤" if message["role"] == "user" else "🧠"
+            with st.chat_message(message["role"], avatar=avatar):
+                st.markdown(message["content"])
+
+                # Sources et feedback pour les messages assistant
+                if message["role"] == "assistant":
+                    sources = message.get("sources", [])
+                    if sources:
+                        with st.expander("📚 Sources utilisées"):
+                            for s in sources:
+                                if isinstance(s, dict):
+                                    st.caption(f"📄 {s.get('file_name', 'inconnu')}")
+                                else:
+                                    st.caption(f"📄 {s}")
+
+                    iid = message.get("interaction_id")
+                    if iid and iid > 0:
+                        c1, c2, c3 = st.columns([1, 1, 8])
+                        with c1:
+                            st.button("👍", key=f"up_{idx}_{iid}",
+                                      on_click=_save_feedback, args=(iid, 1))
+                        with c2:
+                            st.button("👎", key=f"down_{idx}_{iid}",
+                                      on_click=_save_feedback, args=(iid, -1))
+
+        # ─── Input utilisateur ───
+        prompt = st.chat_input("Posez votre question sur vos documents...")
+
+        if prompt:
+            # Ajouter le message utilisateur
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            with st.chat_message("user", avatar="👤"):
+                st.markdown(prompt)
+
+            # Générer la réponse en streaming
+            with st.chat_message("assistant", avatar="🧠"):
+                try:
+                    full_text = st.write_stream(
+                        pipeline.ask_stream(prompt, user_id=user_id)
+                    )
+                except Exception as e:
+                    full_text = f"Erreur : {e}"
+                    st.error(full_text)
+
+            # Récupérer les métadonnées complètes
+            try:
+                result = pipeline.ask(prompt, user_id=user_id)
+                sources = result.get("sources", [])
+                interaction_id = result.get("interaction_id")
+            except Exception:
+                sources = []
+                interaction_id = None
+
+            # Sauvegarder le message assistant
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": full_text,
+                "sources": sources,
+                "interaction_id": interaction_id,
+            })
             st.rerun()

@@ -1,118 +1,168 @@
 """
-pages/upload.py — Page d'import de documents.
+pages/upload.py — Page de gestion des documents.
 
-Interface Streamlit pour uploader des fichiers PDF, DOCX et TXT,
-les traiter (nettoyage, chunking) et les indexer dans la base
-vectorielle ChromaDB.
+Import de fichiers (PDF, DOCX, TXT, MD), ingestion, indexation
+dans ChromaDB, et gestion de la bibliothèque de documents.
 """
 
 import streamlit as st
-from pathlib import Path
-import uuid
 
 
-def render_upload_page() -> None:
-    """Affiche la page d'import de documents."""
-    st.header("📄 Import de Documents")
-    st.markdown("Chargez vos fichiers pour les indexer dans la base de connaissances.")
+@st.cache_data(ttl=30)
+def _get_all_docs(user_id: str) -> list[dict]:
+    """Récupère tous les documents de l'utilisateur."""
+    from user import get_user_manager
+    return get_user_manager(user_id).get_user_documents()
 
-    # Zone d'upload
-    uploaded_files = st.file_uploader(
-        "Glissez-déposez vos fichiers ici",
-        type=["pdf", "docx", "txt"],
-        accept_multiple_files=True,
-        help="Formats supportés : PDF, DOCX, TXT",
-    )
 
-    if uploaded_files:
-        st.markdown(f"**{len(uploaded_files)} fichier(s) sélectionné(s)**")
+def show_upload_page() -> None:
+    """Affiche la page de gestion des documents."""
+    user_id = st.session_state.get("user_id", "default")
 
-        # Paramètres de chunking
-        with st.expander("⚙️ Paramètres de découpage", expanded=False):
-            from config import settings
+    st.title("📁 Gestion des documents")
+    st.caption("Importez vos fichiers PDF, DOCX ou TXT")
 
-            chunk_size = st.slider(
-                "Taille des chunks (caractères)",
-                min_value=100,
-                max_value=2000,
-                value=settings.CHUNK_SIZE,
-                step=50,
-            )
-            chunk_overlap = st.slider(
-                "Chevauchement (caractères)",
-                min_value=0,
-                max_value=200,
-                value=settings.CHUNK_OVERLAP,
-                step=10,
-            )
+    tab_upload, tab_library = st.tabs(["⬆️ Importer", "📚 Bibliothèque"])
 
-        # Bouton de traitement
-        if st.button("🚀 Traiter et indexer les documents", type="primary"):
-            progress_bar = st.progress(0)
-            status_text = st.empty()
+    # ═══════════════════════════════════════════
+    # Tab 1 : Import
+    # ═══════════════════════════════════════════
+    with tab_upload:
+        uploaded_files = st.file_uploader(
+            "Glissez vos fichiers ici",
+            type=["pdf", "docx", "doc", "txt", "md"],
+            accept_multiple_files=True,
+            help="Formats supportés : PDF, Word, Texte, Markdown",
+        )
 
-            try:
-                from config import settings
-                from ingestion.loader import DocumentLoader
-                from ingestion.cleaner import TextCleaner
-                from ingestion.chunker import TextChunker
-                from vectorstore.embedder import Embedder
-                from vectorstore.store import VectorStore
+        if uploaded_files:
+            for file in uploaded_files:
+                with st.expander(f"📄 {file.name} ({file.size / 1024:.1f} Ko)"):
+                    st.caption(f"Type : {file.type or file.name.split('.')[-1]}")
 
-                loader = DocumentLoader()
-                cleaner = TextCleaner()
-                chunker = TextChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-                embedder = Embedder()
-                store = VectorStore()
+            if st.button("🚀 Lancer l'ingestion", type="primary", key="btn_ingest"):
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                results_container = st.container()
 
-                total_chunks = 0
+                total = len(uploaded_files)
 
-                for idx, uploaded_file in enumerate(uploaded_files):
-                    status_text.markdown(f"📖 Traitement de **{uploaded_file.name}**...")
-                    progress_bar.progress((idx) / len(uploaded_files))
+                for i, file in enumerate(uploaded_files):
+                    status_text.text(f"Traitement de {file.name}...")
+                    progress_bar.progress((i + 1) / total)
 
-                    # Sauvegarder le fichier uploadé
-                    save_path = settings.upload_dir_path / uploaded_file.name
-                    save_path.write_bytes(uploaded_file.getbuffer())
+                    try:
+                        # 1. Ingestion
+                        from ingestion import ingest_file
+                        file_bytes = file.read()
+                        chunks, stats = ingest_file(file_bytes, file.name)
 
-                    # Charger et nettoyer
-                    doc = loader.load(save_path)
-                    doc.content = cleaner.clean(doc.content)
+                        # 2. Indexation vectorielle
+                        from vectorstore import add_to_vectorstore
+                        add_to_vectorstore(chunks)
 
-                    # Découper en chunks
-                    chunks = chunker.split(doc.content, metadata={"filename": doc.filename})
+                        # 3. Enregistrement profil
+                        from user import get_user_manager
+                        mgr = get_user_manager(user_id)
+                        mgr.register_document(
+                            file_name=file.name,
+                            file_type=file.name.rsplit(".", 1)[-1],
+                            chunk_count=stats["total_chunks"],
+                        )
 
-                    if chunks:
-                        # Générer les embeddings
-                        texts = [c.content for c in chunks]
-                        embeddings = embedder.embed_texts(texts)
+                        # 4. Résumé automatique
+                        try:
+                            from rag import get_pipeline
+                            pipeline = get_pipeline()
+                            if pipeline.is_ready:
+                                with st.spinner(f"Résumé de {file.name}..."):
+                                    summary = pipeline.summarize_document(file.name)
+                                    mgr.store_document_summary(file.name, summary)
+                        except Exception:
+                            pass  # Le résumé est optionnel
 
-                        # Stocker dans ChromaDB
-                        ids = [f"{doc.filename}_{uuid.uuid4().hex[:8]}" for _ in chunks]
-                        metadatas = [c.metadata for c in chunks]
-                        store.add_documents(ids=ids, documents=texts, embeddings=embeddings, metadatas=metadatas)
+                        with results_container:
+                            st.success(
+                                f"✅ {file.name} — {stats['total_chunks']} chunks créés"
+                            )
+                            with st.expander(f"📊 Statistiques — {file.name}"):
+                                c1, c2, c3 = st.columns(3)
+                                c1.metric("Chunks", stats["total_chunks"])
+                                c2.metric("Moy. mots/chunk", f"{stats['avg_word_count']:.0f}")
+                                c3.metric("Taille moy.", f"{stats['avg_chunk_size']:.0f} chars")
 
-                        total_chunks += len(chunks)
+                    except Exception as e:
+                        st.error(f"❌ Erreur sur {file.name} : {str(e)}")
 
                 progress_bar.progress(1.0)
-                st.session_state.documents_loaded = True
+                status_text.text("✅ Ingestion terminée !")
+                st.cache_data.clear()
 
-                st.success(
-                    f"✅ **{len(uploaded_files)} document(s)** traité(s) avec succès ! "
-                    f"({total_chunks} chunks indexés)"
-                )
+    # ═══════════════════════════════════════════
+    # Tab 2 : Bibliothèque
+    # ═══════════════════════════════════════════
+    with tab_library:
+        try:
+            docs = _get_all_docs(user_id)
+        except Exception as e:
+            st.error(f"Erreur chargement documents : {e}")
+            docs = []
 
-            except Exception as e:
-                st.error(f"❌ Erreur lors du traitement : {str(e)}")
+        if not docs:
+            st.info("📭 Aucun document importé. Utilisez l'onglet Importer.")
+        else:
+            # Métriques résumées
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Documents", len(docs))
+            c2.metric("Total chunks", sum(d["chunk_count"] for d in docs))
+            c3.metric("Avec résumé", sum(1 for d in docs if d["has_summary"]))
 
-    # Statistiques de la base
-    st.markdown("---")
-    st.subheader("📊 État de la base de connaissances")
+            st.divider()
 
-    try:
-        from vectorstore.store import VectorStore
-        store = VectorStore()
-        count = store.count()
-        st.metric("Chunks indexés", count)
-    except Exception:
-        st.info("Base vectorielle non initialisée.")
+            # Liste des documents
+            for doc in docs:
+                with st.container(border=True):
+                    col_info, col_actions = st.columns([8, 2])
+
+                    with col_info:
+                        st.markdown(f"**📄 {doc['file_name']}**")
+                        st.caption(
+                            f"Importé le {doc['upload_date'][:10] if doc['upload_date'] else '—'} · "
+                            f"{doc['chunk_count']} chunks · "
+                            f"Consulté {doc['access_count']} fois"
+                        )
+                        if doc["has_summary"]:
+                            with st.expander("📝 Voir le résumé"):
+                                try:
+                                    from user import get_user_manager
+                                    m = get_user_manager(user_id)
+                                    # Récupérer le résumé depuis la base
+                                    from user.db import get_session
+                                    from user.profile import DocumentAccess
+                                    session = get_session()
+                                    da = (
+                                        session.query(DocumentAccess)
+                                        .filter_by(user_id=user_id, file_name=doc["file_name"])
+                                        .first()
+                                    )
+                                    if da and da.summary:
+                                        st.markdown(da.summary)
+                                    else:
+                                        st.caption("Résumé non disponible")
+                                except Exception:
+                                    st.caption("Erreur lors du chargement du résumé")
+
+                    with col_actions:
+                        if st.button(
+                            "🗑️",
+                            key=f"del_{doc['file_name']}",
+                            help="Supprimer ce document",
+                        ):
+                            try:
+                                from user import get_user_manager
+                                get_user_manager(user_id).delete_document(doc["file_name"])
+                                st.cache_data.clear()
+                                st.success(f"{doc['file_name']} supprimé")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Erreur suppression : {e}")
