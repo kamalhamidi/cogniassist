@@ -161,7 +161,8 @@ class VectorStore:
         metadatas: list[dict],
     ) -> tuple[list[str], list[str], list[dict]]:
         """
-        Filtre les chunks dont l'ID existe déjà dans la collection.
+        Filtre les chunks dont l'ID existe déjà dans la collection
+        ET déduplique les IDs au sein du même batch.
 
         Args:
             ids: Liste des IDs candidats.
@@ -171,30 +172,40 @@ class VectorStore:
         Returns:
             Tuple (new_ids, new_texts, new_metadatas) sans doublons.
         """
-        if self.collection.count() == 0:
-            return ids, texts, metadatas
+        # Étape 1 : dédupliquer au sein du batch (garder la première occurrence)
+        seen: set[str] = set()
+        dedup_ids, dedup_texts, dedup_metas = [], [], []
+        for cid, text, meta in zip(ids, texts, metadatas):
+            if cid not in seen:
+                seen.add(cid)
+                dedup_ids.append(cid)
+                dedup_texts.append(text)
+                dedup_metas.append(meta)
 
-        # Vérifier quels IDs existent déjà
+        # Étape 2 : filtrer contre les IDs déjà en base
+        if self.collection.count() == 0:
+            return dedup_ids, dedup_texts, dedup_metas
+
         try:
-            existing = self.collection.get(ids=ids, include=[])
+            existing = self.collection.get(ids=dedup_ids, include=[])
             existing_ids = set(existing["ids"]) if existing and existing.get("ids") else set()
         except Exception:
             existing_ids = set()
 
         if not existing_ids:
-            return ids, texts, metadatas
+            return dedup_ids, dedup_texts, dedup_metas
 
         new_ids, new_texts, new_metas = [], [], []
-        for cid, text, meta in zip(ids, texts, metadatas):
+        for cid, text, meta in zip(dedup_ids, dedup_texts, dedup_metas):
             if cid not in existing_ids:
                 new_ids.append(cid)
                 new_texts.append(text)
                 new_metas.append(meta)
 
-        if len(existing_ids & set(ids)) > 0:
+        if len(existing_ids & set(dedup_ids)) > 0:
             logger.debug(
                 "%d doublon(s) détecté(s) et ignoré(s)",
-                len(ids) - len(new_ids),
+                len(dedup_ids) - len(new_ids),
             )
 
         return new_ids, new_texts, new_metas

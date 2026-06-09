@@ -162,7 +162,7 @@ pytest tests/ -v
 | Validation | Pydantic |
 | Évaluation | RAGAS |
 | Visualisation | Plotly + Pandas |
-| Tests | pytest |
+| Tests | pytest |   
 
 ---
 

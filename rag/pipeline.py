@@ -186,7 +186,7 @@ class RAGPipeline:
     def ask_stream(
         self,
         question: str,
-        user_profile: str = "Étudiant en Master Data Science",
+        user_id: str = "default",
         k: int = 5,
     ) -> Generator[str, None, None]:
         """
@@ -197,7 +197,7 @@ class RAGPipeline:
 
         Args:
             question: La question de l'utilisateur.
-            user_profile: Description du profil utilisateur.
+            user_id: Identifiant de l'utilisateur pour la personnalisation.
             k: Nombre de chunks à récupérer.
 
         Yields:
@@ -212,7 +212,14 @@ class RAGPipeline:
                 f"Veuillez lancer Ollama : ollama run {settings.ollama_model}"
             )
 
-        # Étapes 1-4 identiques à ask()
+        # Personnalisation via le profil utilisateur
+        from user import get_recommender
+        rec = get_recommender(user_id)
+        params = rec.adapt_rag_parameters()
+        k = params["k"]
+        user_profile = params["user_profile"]
+
+        # Construire le prompt
         context = self.retriever.retrieve_with_context_window(question, k=k)
         chat_history = self.memory.get_formatted_history()
         prompt = self.prompt_builder.build_rag_prompt(
