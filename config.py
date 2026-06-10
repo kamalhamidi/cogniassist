@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     CHUNK_OVERLAP: int = 50
     MAX_RETRIEVED_DOCS: int = 5
 
+    # === Hybrid Retrieval ===
+    BM25_INDEX_PATH: str = "./data/bm25_index.pkl"
+    HYBRID_DENSE_WEIGHT: float = 0.6
+    HYBRID_SPARSE_WEIGHT: float = 0.4
+
     # === Application ===
     APP_NAME: str = "CogniAssist"
     DEBUG: bool = False

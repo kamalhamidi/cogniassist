@@ -18,7 +18,7 @@ from langchain_core.messages import HumanMessage
 
 from config import settings
 from vectorstore.store import VectorStore
-from vectorstore.retriever import SmartRetriever
+from vectorstore.retriever import SmartRetriever, HybridRetriever
 from rag.prompt_builder import PromptBuilder
 from rag.memory import ConversationMemory
 
@@ -53,7 +53,13 @@ class RAGPipeline:
 
         # Composants du pipeline
         self._vector_store = VectorStore()
-        self.retriever = SmartRetriever(self._vector_store)
+        self._smart_retriever = SmartRetriever(self._vector_store)
+        self.retriever = HybridRetriever(
+            smart_retriever=self._smart_retriever,
+            bm25_index=self._vector_store.bm25_index,
+            dense_weight=settings.HYBRID_DENSE_WEIGHT,
+            sparse_weight=settings.HYBRID_SPARSE_WEIGHT,
+        )
         self.prompt_builder = PromptBuilder()
         self.memory = ConversationMemory(max_messages=10)
 

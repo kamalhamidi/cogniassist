@@ -17,6 +17,7 @@ from langchain.schema import Document
 
 from config import settings
 from vectorstore.embedder import EmbeddingManager
+from vectorstore.bm25_index import BM25Index
 
 logger = logging.getLogger("cogniassist.vectorstore")
 
@@ -57,6 +58,11 @@ class VectorStore:
 
         # Gestionnaire d'embeddings
         self.embedding_manager = EmbeddingManager()
+
+        # Index BM25 (sparse)
+        from config import BASE_DIR
+        bm25_path = str((BASE_DIR / settings.BM25_INDEX_PATH).resolve())
+        self.bm25_index = BM25Index(persist_path=bm25_path)
 
         # Obtenir ou créer la collection
         self.collection = self._get_or_create_collection()
@@ -152,6 +158,17 @@ class VectorStore:
             "%d chunk(s) ajouté(s) à la collection '%s' (%d doublons ignorés)",
             total_added, self.collection_name, len(ids) - total_added,
         )
+
+        # Synchroniser l'index BM25
+        try:
+            langchain_docs = [
+                Document(page_content=t, metadata=m)
+                for t, m in zip(new_texts, new_metas)
+            ]
+            self.bm25_index.add_documents(langchain_docs)
+        except Exception as e:
+            logger.warning("Erreur synchronisation BM25 (add) : %s", str(e))
+
         return total_added
 
     def _filter_duplicates(
@@ -320,8 +337,14 @@ class VectorStore:
             logger.info("Aucun chunk trouvé pour le fichier '%s'.", file_name)
             return 0
 
-        # Supprimer
+        # Supprimer de ChromaDB
         self.collection.delete(where={"file_name": file_name})
+
+        # Synchroniser l'index BM25
+        try:
+            self.bm25_index.remove_document(file_name)
+        except Exception as e:
+            logger.warning("Erreur synchronisation BM25 (delete) : %s", str(e))
 
         logger.info(
             "%d chunk(s) supprimé(s) pour le fichier '%s'.",

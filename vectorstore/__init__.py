@@ -11,12 +11,14 @@ import logging
 from langchain.schema import Document
 from vectorstore.embedder import EmbeddingManager
 from vectorstore.store import VectorStore
-from vectorstore.retriever import SmartRetriever
+from vectorstore.retriever import SmartRetriever, HybridRetriever
+from vectorstore.bm25_index import BM25Index
 
 logger = logging.getLogger("cogniassist.vectorstore")
 
 __all__ = [
     "EmbeddingManager", "VectorStore", "SmartRetriever",
+    "HybridRetriever", "BM25Index",
     "add_to_vectorstore", "search_vectorstore",
 ]
 
