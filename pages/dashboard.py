@@ -263,3 +263,9 @@ def show_dashboard_page() -> None:
                 st.markdown("**Cas d'usage :**")
                 for uc in use_cases:
                     st.markdown(f"  • {uc}")
+
+
+if __name__ == "__main__":
+    st.session_state.current_page = "📊 Dashboard"
+    st.switch_page("app.py")
+

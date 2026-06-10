@@ -166,3 +166,8 @@ def show_upload_page() -> None:
                                 st.rerun()
                             except Exception as e:
                                 st.error(f"Erreur suppression : {e}")
+
+
+if __name__ == "__main__":
+    st.session_state.current_page = "📁 Documents"
+    st.switch_page("app.py")

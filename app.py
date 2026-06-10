@@ -99,9 +99,13 @@ def main() -> None:
         from user import get_kmb_manager
         _kmb_mgr = get_kmb_manager(st.session_state.user_id)
         if not _kmb_mgr.has_seen_kmb_onboarding() and not st.session_state.get("kmb_skipped", False):
-            from pages.know_me_better import show_kmb_page
-            show_kmb_page(is_onboarding=True)
-            st.stop()
+            if page == "💬 Chat":
+                from pages.know_me_better import show_kmb_page
+                show_kmb_page(is_onboarding=True)
+                st.stop()
+            else:
+                # Si l'utilisateur clique sur une autre page de la sidebar, on considère qu'il passe/reporte l'onboarding KMB
+                st.session_state.kmb_skipped = True
     except Exception:
         pass  # Si erreur, continuer normalement
 

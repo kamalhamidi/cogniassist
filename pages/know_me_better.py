@@ -429,3 +429,9 @@ def render_section_5(data: dict, is_onboarding: bool) -> None:
             on_change=save_kmb_field,
             args=("additional_information", "kmb_additional")
         )
+
+
+if __name__ == "__main__":
+    st.session_state.current_page = "💬 Chat"
+    st.switch_page("app.py")
+

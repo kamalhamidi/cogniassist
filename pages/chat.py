@@ -185,3 +185,9 @@ def show_chat_page() -> None:
                 "interaction_id": interaction_id,
             })
             st.rerun()
+
+
+if __name__ == "__main__":
+    st.session_state.current_page = "💬 Chat"
+    st.switch_page("app.py")
+

@@ -399,3 +399,9 @@ def show_profile_page() -> None:
             show_kmb_page(is_onboarding=False)
         except Exception as e:
             st.error(f"Erreur d'affichage Know Me Better : {e}")
+
+
+if __name__ == "__main__":
+    st.session_state.current_page = "👤 Profil"
+    st.switch_page("app.py")
+

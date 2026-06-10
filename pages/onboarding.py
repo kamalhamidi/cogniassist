@@ -485,3 +485,8 @@ def _skip_onboarding() -> None:
         st.rerun()
     except Exception as e:
         st.error(f"Erreur : {e}")
+
+
+if __name__ == "__main__":
+    st.switch_page("app.py")
+
