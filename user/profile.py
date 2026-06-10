@@ -3,8 +3,10 @@ user/profile.py — Modèles et gestion des profils utilisateurs.
 
 Définit les tables SQLAlchemy pour les profils, préférences et
 documents, ainsi que le UserProfileManager pour les opérations CRUD.
+Inclut les extensions ACPE (Adaptive Cognitive Profiling Engine).
 """
 
+import json
 import logging
 from datetime import datetime
 from typing import Optional
@@ -24,7 +26,7 @@ logger = logging.getLogger("cogniassist.user")
 # ═══════════════════════════════════════════════════════════
 
 class UserProfile(Base):
-    """Table des profils utilisateurs."""
+    """Table des profils utilisateurs avec extensions ACPE."""
 
     __tablename__ = "user_profiles"
 
@@ -35,6 +37,13 @@ class UserProfile(Base):
     avatar = Column(String(10), default="🧠")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # === ACPE Extensions ===
+    user_type = Column(String(20), default="individual")
+    onboarding_completed = Column(Boolean, default=False)
+    role = Column(String(30), nullable=True)
+    organization_data = Column(Text, nullable=True)
+    adaptive_learning_enabled = Column(Boolean, default=True)
 
 
 class UserPreferences(Base):
@@ -141,6 +150,14 @@ class UserProfileManager:
         if prefs and prefs.domain_focus:
             domain_list = [d.strip() for d in prefs.domain_focus.split(",") if d.strip()]
 
+        # Décoder les données entreprise
+        org_data = {}
+        if profile and profile.organization_data:
+            try:
+                org_data = json.loads(profile.organization_data)
+            except (json.JSONDecodeError, TypeError):
+                org_data = {}
+
         return {
             "user_id": self.user_id,
             "name": profile.name if profile else "Utilisateur",
@@ -152,6 +169,12 @@ class UserProfileManager:
             "domain_focus": domain_list,
             "goals": prefs.goals if prefs else "",
             "expertise_level": prefs.expertise_level if prefs else "intermediate",
+            # ACPE fields
+            "user_type": profile.user_type if profile else "individual",
+            "onboarding_completed": profile.onboarding_completed if profile else False,
+            "role": profile.role if profile else None,
+            "organization_data": org_data,
+            "adaptive_learning_enabled": profile.adaptive_learning_enabled if profile else True,
         }
 
     def update_profile(self, **kwargs) -> None:
@@ -159,9 +182,14 @@ class UserProfileManager:
         Met à jour les champs du profil utilisateur.
 
         Args:
-            **kwargs: Champs acceptés : name, email, avatar.
+            **kwargs: Champs acceptés : name, email, avatar, user_type,
+                      role, organization_data, adaptive_learning_enabled.
+                      organization_data accepte dict (sera JSON-encodé).
         """
-        allowed = {"name", "email", "avatar"}
+        allowed = {
+            "name", "email", "avatar", "user_type", "role",
+            "organization_data", "adaptive_learning_enabled",
+        }
         try:
             profile = (
                 self.session.query(UserProfile)
@@ -170,8 +198,11 @@ class UserProfileManager:
             )
             if profile:
                 for key, value in kwargs.items():
-                    if key in allowed:
-                        setattr(profile, key, value)
+                    if key not in allowed:
+                        continue
+                    if key == "organization_data" and isinstance(value, dict):
+                        value = json.dumps(value, ensure_ascii=False)
+                    setattr(profile, key, value)
                 self.session.commit()
         except Exception as e:
             self.session.rollback()
@@ -209,6 +240,9 @@ class UserProfileManager:
         """
         Construit un résumé du profil pour injection dans le prompt RAG.
 
+        Inclut les données ACPE (rôle, type utilisateur, entreprise)
+        pour une personnalisation enrichie.
+
         Returns:
             Chaîne de contexte utilisateur formatée.
         """
@@ -216,12 +250,150 @@ class UserProfileManager:
         domains = ", ".join(p["domain_focus"]) if p["domain_focus"] else "Non définis"
         goals = p["goals"][:200] if p["goals"] else "Non définis"
 
-        return (
-            f"Profil : {p['name']} | Niveau : {p['expertise_level']} | Langue : {p['language']}\n"
-            f"Style de réponse souhaité : {p['response_style']}\n"
-            f"Domaines d'intérêt : {domains}\n"
-            f"Objectifs : {goals}"
-        )
+        parts = [
+            f"Profil : {p['name']} | Niveau : {p['expertise_level']} | Langue : {p['language']}",
+            f"Type d'utilisateur : {p['user_type']}",
+            f"Style de réponse souhaité : {p['response_style']}",
+        ]
+
+        if p.get("role"):
+            parts.append(f"Rôle : {p['role']}")
+
+        parts.append(f"Domaines d'intérêt : {domains}")
+        parts.append(f"Objectifs : {goals}")
+
+        # Contexte entreprise
+        org = p.get("organization_data", {})
+        if org and p["user_type"] == "enterprise":
+            industry = org.get("industry", "")
+            confidentiality = org.get("confidentiality", "standard")
+            if industry:
+                parts.append(f"Secteur : {industry}")
+            parts.append(f"Niveau de confidentialité : {confidentiality}")
+
+        return "\n".join(parts)
+
+    def complete_onboarding(self, onboarding_data: dict) -> None:
+        """
+        Finalise l'onboarding en sauvegardant toutes les données collectées.
+
+        Args:
+            onboarding_data: Dictionnaire contenant toutes les réponses
+                            du wizard d'onboarding.
+        """
+        try:
+            profile = (
+                self.session.query(UserProfile)
+                .filter_by(user_id=self.user_id)
+                .first()
+            )
+            if not profile:
+                return
+
+            # Profil de base
+            profile.user_type = onboarding_data.get("user_type", "individual")
+            profile.onboarding_completed = True
+            profile.role = onboarding_data.get("role")
+            if onboarding_data.get("name"):
+                profile.name = onboarding_data["name"]
+
+            # Données entreprise
+            org_data = onboarding_data.get("organization_data")
+            if org_data and isinstance(org_data, dict):
+                profile.organization_data = json.dumps(org_data, ensure_ascii=False)
+
+            # Préférences
+            prefs = (
+                self.session.query(UserPreferences)
+                .filter_by(user_id=self.user_id)
+                .first()
+            )
+            if prefs:
+                if onboarding_data.get("expertise_level"):
+                    prefs.expertise_level = onboarding_data["expertise_level"]
+                if onboarding_data.get("response_style"):
+                    prefs.response_style = onboarding_data["response_style"]
+                if onboarding_data.get("language"):
+                    prefs.language = onboarding_data["language"]
+                if onboarding_data.get("goals"):
+                    goals = onboarding_data["goals"]
+                    if isinstance(goals, list):
+                        prefs.goals = ", ".join(goals)
+                    else:
+                        prefs.goals = goals
+                if onboarding_data.get("interests"):
+                    interests = onboarding_data["interests"]
+                    if isinstance(interests, list):
+                        prefs.domain_focus = ",".join(interests)
+                    else:
+                        prefs.domain_focus = interests
+
+            self.session.commit()
+            logger.info(
+                "Onboarding complété pour '%s' (type=%s).",
+                self.user_id, profile.user_type,
+            )
+        except Exception as e:
+            self.session.rollback()
+            logger.error("Erreur complete_onboarding : %s", e)
+            raise
+
+    def reset_acpe_data(self) -> None:
+        """
+        Réinitialise toutes les données ACPE (knowledge, usage, progressive).
+
+        Conserve le profil de base et les préférences manuelles.
+        """
+        try:
+            from user.acpe_models import KnowledgeProfile, UsagePattern, ProgressivePrompt
+
+            self.session.query(KnowledgeProfile).filter_by(
+                user_id=self.user_id
+            ).delete()
+            self.session.query(UsagePattern).filter_by(
+                user_id=self.user_id
+            ).delete()
+            self.session.query(ProgressivePrompt).filter_by(
+                user_id=self.user_id
+            ).delete()
+            self.session.commit()
+            logger.info("Données ACPE réinitialisées pour '%s'.", self.user_id)
+        except Exception as e:
+            self.session.rollback()
+            logger.error("Erreur reset ACPE : %s", e)
+
+    def export_profile_data(self) -> dict:
+        """
+        Exporte toutes les données du profil utilisateur en un seul dict.
+
+        Returns:
+            Dictionnaire complet exportable en JSON.
+        """
+        profile = self.get_profile()
+
+        # Knowledge profiles
+        try:
+            from user.acpe_models import KnowledgeProfile, UsagePattern
+            knowledge = [
+                kp.to_dict()
+                for kp in self.session.query(KnowledgeProfile)
+                .filter_by(user_id=self.user_id).all()
+            ]
+            usage = [
+                {"metric": up.metric_name, "value": up.get_value()}
+                for up in self.session.query(UsagePattern)
+                .filter_by(user_id=self.user_id).all()
+            ]
+        except Exception:
+            knowledge = []
+            usage = []
+
+        return {
+            "profile": profile,
+            "knowledge_profiles": knowledge,
+            "usage_patterns": usage,
+            "exported_at": datetime.utcnow().isoformat(),
+        }
 
     def register_document(
         self, file_name: str, file_type: str, chunk_count: int,

@@ -22,11 +22,18 @@ logger = logging.getLogger("cogniassist.rag")
 
 __all__ = [
     "RAGPipeline", "PromptBuilder", "ConversationMemory",
-    "BatchSummarizer", "get_pipeline",
+    "BatchSummarizer", "get_pipeline", "reset_pipeline",
 ]
 
 # Singleton — une seule instance du pipeline partagée
 _pipeline_instance: RAGPipeline | None = None
+
+
+def reset_pipeline() -> None:
+    """Réinitialise l'instance singleton du RAGPipeline (utilisé lors du reset)."""
+    global _pipeline_instance
+    _pipeline_instance = None
+    logger.info("Instance singleton RAGPipeline réinitialisée à None.")
 
 
 def get_pipeline() -> RAGPipeline:

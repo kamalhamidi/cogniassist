@@ -1,10 +1,12 @@
 """
-pages/profile.py — Page de gestion du profil utilisateur.
+pages/profile.py — Page de gestion du profil utilisateur avec ACPE.
 
 Affiche et permet de modifier le profil, les préférences,
-et prévisualise le contexte RAG personnalisé.
+prévisualise le contexte RAG personnalisé, et offre des contrôles
+de transparence et de confidentialité ACPE.
 """
 
+import json
 import streamlit as st
 
 
@@ -58,10 +60,20 @@ def show_profile_page() -> None:
         }
         st.caption(f"Niveau : {level_labels.get(profile['expertise_level'], profile['expertise_level'])}")
 
+        # ACPE badges
+        user_type = profile.get("user_type", "individual")
+        role = profile.get("role", "")
+        type_label = "👤 Individuel" if user_type == "individual" else "🏢 Entreprise"
+        st.caption(f"Type : {type_label}")
+        if role:
+            st.caption(f"Rôle : {role}")
+
     st.divider()
 
     # ═══ Onglets ═══
-    tab_prefs, tab_context = st.tabs(["⚙️ Préférences", "🎯 Contexte RAG"])
+    tab_prefs, tab_context, tab_privacy = st.tabs([
+        "⚙️ Préférences", "🎯 Contexte RAG", "🔒 Données & Confidentialité",
+    ])
 
     # ─── Tab 1 : Préférences ───
     with tab_prefs:
@@ -75,8 +87,8 @@ def show_profile_page() -> None:
                 format_func=lambda x: {"beginner": "Débutant", "intermediate": "Intermédiaire", "expert": "Expert"}[x],
             )
 
-            style_options = ["concise", "detailed", "academic", "simple"]
-            style_captions = ["Court", "Détaillé", "Académique", "Simple"]
+            style_options = ["concise", "detailed", "step_by_step", "educational"]
+            style_captions = ["Court", "Détaillé", "Étape par étape", "Pédagogique"]
             current_style = profile.get("response_style", "detailed")
             style_index = style_options.index(current_style) if current_style in style_options else 1
 
@@ -152,15 +164,169 @@ def show_profile_page() -> None:
             c1.metric("Chunks récupérés (k)", params["k"])
             c2.metric("Température LLM", params["temperature"])
             c3.metric("Niveau", profile["expertise_level"])
+
+            # Explications de transparence
+            st.divider()
+            st.subheader("💡 Pourquoi ces paramètres ?")
+
+            reasons = []
+            user_type = profile.get("user_type", "individual")
+            level = profile.get("expertise_level", "intermediate")
+
+            if level == "beginner":
+                reasons.append(
+                    f"**k={params['k']}** — Plus de chunks récupérés pour "
+                    f"fournir un contexte riche adapté à votre niveau débutant."
+                )
+                reasons.append(
+                    "**Température basse** — Réponses plus déterministes et fiables."
+                )
+            elif level == "expert":
+                reasons.append(
+                    f"**k={params['k']}** — Moins de chunks mais plus ciblés "
+                    f"pour des réponses concises adaptées à votre expertise."
+                )
+            if user_type == "enterprise":
+                reasons.append(
+                    "**Mode entreprise** — Priorité aux citations exactes et "
+                    "au registre professionnel."
+                )
+
+            for r in reasons:
+                st.markdown(f"• {r}")
+
         except Exception as e:
             st.error(f"Erreur paramètres : {e}")
 
-        st.divider()
-        st.subheader("⚠️ Zone dangereuse")
+    # ─── Tab 3 : Données & Confidentialité ───
+    with tab_privacy:
+        st.subheader("🔒 Gestion des données personnelles")
+        st.caption(
+            "Toutes vos données sont stockées localement. "
+            "Aucune information n'est envoyée à des services externes."
+        )
 
-        col_d1, col_d2 = st.columns(2)
+        # ── Profil de connaissances ──
+        st.markdown("---")
+        st.markdown("#### 🧠 Profil de connaissances")
+
+        try:
+            from user.knowledge_engine import KnowledgeProfileEngine
+            ke = KnowledgeProfileEngine(user_id)
+            knowledge = ke.get_knowledge_profile()
+
+            if knowledge:
+                import pandas as pd
+                df = pd.DataFrame(knowledge)
+                st.dataframe(
+                    df[["domain", "mastery_score", "confidence", "interaction_count"]],
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.caption("Aucun profil de connaissances encore construit.")
+        except Exception:
+            st.caption("Profil de connaissances non disponible.")
+
+        # ── Insights ──
+        st.markdown("---")
+        st.markdown("#### 💡 Insights détectés")
+
+        try:
+            from user.profile_evolution import ProfileEvolutionEngine
+            evo = ProfileEvolutionEngine(user_id)
+            insights = evo.generate_insights()
+            if insights:
+                for insight in insights:
+                    st.markdown(f"• {insight}")
+
+                # Explications de transparence
+                top_domains = ke.get_top_domains(limit=3)
+                if top_domains:
+                    for domain in top_domains:
+                        kp_data = next(
+                            (k for k in knowledge if k["domain"] == domain), None,
+                        )
+                        if kp_data:
+                            pct = kp_data["interaction_count"]
+                            st.caption(
+                                f"💬 Vous voyez \"{domain}\" car {pct} de vos "
+                                f"interactions récentes concernent ce domaine."
+                            )
+            else:
+                st.caption("Les insights apparaîtront après quelques interactions.")
+        except Exception:
+            st.caption("Insights non disponibles.")
+
+        # ── Contrôles ──
+        st.markdown("---")
+        st.markdown("#### ⚙️ Contrôles")
+
+        # Toggle apprentissage adaptatif
+        adaptive = profile.get("adaptive_learning_enabled", True)
+        new_adaptive = st.toggle(
+            "Apprentissage adaptatif activé",
+            value=adaptive,
+            help="Désactivez pour arrêter l'analyse automatique de vos interactions.",
+            key="toggle_adaptive",
+        )
+        if new_adaptive != adaptive:
+            mgr.update_profile(adaptive_learning_enabled=new_adaptive)
+            st.cache_data.clear()
+            st.rerun()
+
+        st.markdown("---")
+
+        # ── Boutons d'action ──
+        col_d1, col_d2, col_d3 = st.columns(3)
 
         with col_d1:
+            if st.button("📥 Exporter mes données", key="btn_export"):
+                try:
+                    export = mgr.export_profile_data()
+                    json_str = json.dumps(export, indent=2, ensure_ascii=False)
+                    st.download_button(
+                        label="💾 Télécharger JSON",
+                        data=json_str,
+                        file_name=f"cogniassist_profile_{user_id}.json",
+                        mime="application/json",
+                        key="btn_download",
+                    )
+                except Exception as e:
+                    st.error(f"Erreur export : {e}")
+
+        with col_d2:
+            if st.button("🔄 Réinitialiser le profil ACPE", key="btn_reset_acpe"):
+                try:
+                    mgr.reset_acpe_data()
+                    st.success("Données ACPE réinitialisées")
+                    st.cache_data.clear()
+                except Exception as e:
+                    st.error(f"Erreur : {e}")
+
+        with col_d3:
+            if st.button("🔁 Relancer l'onboarding", key="btn_redo_onboarding"):
+                try:
+                    from user.profile import UserProfile
+                    from user.db import get_session
+                    session = get_session()
+                    up = session.query(UserProfile).filter_by(
+                        user_id=user_id,
+                    ).first()
+                    if up:
+                        up.onboarding_completed = False
+                        session.commit()
+                    st.cache_data.clear()
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erreur : {e}")
+
+        st.markdown("---")
+        st.markdown("#### ⚠️ Zone dangereuse")
+
+        col_z1, col_z2 = st.columns(2)
+
+        with col_z1:
             if st.button("🗑️ Effacer l'historique", type="secondary", key="btn_clear_hist"):
                 try:
                     from user import get_interaction_history
@@ -170,8 +336,8 @@ def show_profile_page() -> None:
                 except Exception as e:
                     st.error(f"Erreur : {e}")
 
-        with col_d2:
-            if st.button("🔄 Réinitialiser le profil", type="secondary", key="btn_reset_profile"):
+        with col_z2:
+            if st.button("🔄 Réinitialiser tout le profil", type="secondary", key="btn_reset_profile"):
                 try:
                     mgr.update_preferences(
                         expertise_level="intermediate",
@@ -180,7 +346,48 @@ def show_profile_page() -> None:
                         domain_focus=[],
                         goals="",
                     )
+                    mgr.reset_acpe_data()
                     st.success("Profil réinitialisé aux valeurs par défaut")
                     st.rerun()
                 except Exception as e:
                     st.error(f"Erreur : {e}")
+
+        st.markdown("---")
+        st.markdown("##### ⚙️ Réinitialisation complète du système")
+        st.warning(
+            "⚠️ **Attention :** Cette opération est totalement destructive et irréversible. "
+            "Elle supprimera définitivement :\n"
+            "- L'intégralité de votre profil et de vos préférences\n"
+            "- L'historique complet de vos conversations\n"
+            "- Tous les documents importés dans la base de connaissances\n"
+            "- Tous les index de recherche (ChromaDB et BM25)"
+        )
+
+        confirm_reset = st.checkbox(
+            "Je confirme vouloir réinitialiser complètement le système et supprimer toutes les données.",
+            key="chk_confirm_factory_reset",
+        )
+
+        if st.button(
+            "💥 Réinitialiser complètement CogniAssist",
+            type="primary",
+            disabled=not confirm_reset,
+            key="btn_factory_reset",
+            use_container_width=True,
+        ):
+            try:
+                from user import reset_system
+                reset_system()
+                st.success("🎉 Le système a été entièrement réinitialisé !")
+                
+                # Vider le session_state de Streamlit
+                for key in list(st.session_state.keys()):
+                    del st.session_state[key]
+                
+                # Effacer tous les caches de Streamlit
+                st.cache_data.clear()
+                st.cache_resource.clear()
+                
+                st.rerun()
+            except Exception as e:
+                st.error(f"Erreur lors de la réinitialisation : {e}")

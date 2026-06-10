@@ -123,26 +123,46 @@ class PersonalizedRecommender:
 
     def adapt_rag_parameters(self) -> dict:
         """
-        Adapte les paramètres RAG au niveau de l'utilisateur.
+        Adapte les paramètres RAG au profil complet de l'utilisateur.
+
+        Prend en compte le niveau d'expertise, le type d'utilisateur
+        (individual/enterprise) et le style de réponse préféré.
 
         Returns:
-            Dictionnaire avec k, user_profile et temperature.
+            Dictionnaire avec k, user_profile, temperature, response_style
+            et user_type.
         """
         profile = self.profile_manager.get_profile()
         level = profile.get("expertise_level", "intermediate")
+        user_type = profile.get("user_type", "individual")
+        response_style = profile.get("response_style", "detailed")
 
-        params = {
-            "beginner": {"k": 3, "temperature": 0.2},
+        # Paramètres de base par niveau d'expertise
+        base_params = {
+            "beginner": {"k": 7, "temperature": 0.2},
             "intermediate": {"k": 5, "temperature": 0.3},
-            "expert": {"k": 8, "temperature": 0.4},
+            "expert": {"k": 4, "temperature": 0.1},
         }
 
-        level_params = params.get(level, params["intermediate"])
+        level_params = base_params.get(level, base_params["intermediate"])
+
+        # Ajustements selon le type d'utilisateur
+        if user_type == "enterprise":
+            level_params["k"] = 6
+            level_params["temperature"] = 0.15
+
+        # Ajustements selon le style de réponse
+        if response_style == "concise":
+            level_params["temperature"] = max(0.1, level_params["temperature"] - 0.05)
+        elif response_style in ("detailed", "educational"):
+            level_params["k"] = min(8, level_params["k"] + 1)
 
         return {
             "k": level_params["k"],
             "user_profile": self.profile_manager.get_personalization_context(),
             "temperature": level_params["temperature"],
+            "response_style": response_style,
+            "user_type": user_type,
         }
 
     def get_learning_progress(self) -> dict:

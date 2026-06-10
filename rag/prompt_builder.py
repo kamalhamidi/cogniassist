@@ -46,9 +46,17 @@ Question de l'utilisateur :
 Instructions :
 - Réponds uniquement en te basant sur le contexte fourni
 - Si le contexte ne contient pas la réponse, dis-le clairement
-- Adapte le niveau de détail au profil utilisateur
-- Réponds toujours en français sauf si l'utilisateur écrit en anglais
-- Sois concis mais complet
+- Adapte le niveau de détail au profil utilisateur :
+  • Si le niveau est "beginner" : explique simplement, évite le jargon technique, donne des exemples concrets
+  • Si le niveau est "intermediate" : équilibre clarté et précision technique
+  • Si le niveau est "expert" : sois technique, concis et direct, évite les explications basiques
+- Respecte le style de réponse indiqué dans le profil :
+  • "concise" : réponses courtes et directes
+  • "detailed" : explications approfondies
+  • "step_by_step" : décompose en étapes numérotées
+  • "educational" : pédagogique avec exemples
+- Si le type d'utilisateur est "enterprise" : utilise un registre professionnel, cite précisément les sources
+- Réponds dans la langue préférée de l'utilisateur (indiquée dans le profil)
 - Si tu cites un document, mentionne son nom
 
 Réponse :""",

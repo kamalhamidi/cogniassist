@@ -78,6 +78,28 @@ def show_chat_page() -> None:
         except Exception:
             st.caption("Erreur de chargement")
 
+        # ─── Progressive Profiling ───
+        try:
+            from user.progressive import ProgressiveProfilingEngine
+            prog = ProgressiveProfilingEngine(user_id)
+            suggestion = prog.check_for_prompts()
+            if suggestion:
+                st.divider()
+                st.subheader("🎯 Suggestion")
+                st.info(suggestion["message"])
+                col_yes, col_no = st.columns(2)
+                with col_yes:
+                    if st.button("✅ Accepter", key="prog_accept", use_container_width=True):
+                        prog.accept_prompt(suggestion["id"])
+                        st.cache_data.clear()
+                        st.rerun()
+                with col_no:
+                    if st.button("❌ Non merci", key="prog_decline", use_container_width=True):
+                        prog.decline_prompt(suggestion["id"])
+                        st.rerun()
+        except Exception:
+            pass  # Progressive profiling est non-critique
+
     # ─────────────────────────────────────────────
     # Colonne gauche : chat principal
     # ─────────────────────────────────────────────

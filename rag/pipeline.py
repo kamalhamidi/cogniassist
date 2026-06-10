@@ -160,13 +160,32 @@ class RAGPipeline:
         # 7. Calculer le temps de réponse et sauvegarder dans l'historique
         response_time_ms = int((time.time() - start_time) * 1000)
         history = get_interaction_history(user_id)
+        source_names = [c.metadata.get("file_name", "") for c in chunks]
         interaction_id = history.save_interaction(
             question=question,
             answer=answer,
-            sources=[c.metadata.get("file_name", "") for c in chunks],
+            sources=source_names,
             chunks_used=len(chunks),
             response_time_ms=response_time_ms,
         )
+
+        # 7.5 — Évolution du profil ACPE (non-bloquant)
+        try:
+            from user.profile import UserProfileManager
+            mgr = UserProfileManager(user_id)
+            profile_data = mgr.get_profile()
+            if profile_data.get("adaptive_learning_enabled", True):
+                from user.profile_evolution import ProfileEvolutionEngine
+                evo = ProfileEvolutionEngine(user_id)
+                evo.analyze_interaction(
+                    question=question,
+                    answer=answer,
+                    sources=source_names,
+                    feedback=None,
+                    response_time_ms=response_time_ms,
+                )
+        except Exception as e:
+            logger.debug("ACPE evolution (non-bloquant) : %s", e)
 
         # 8. Construire les sources
         sources = [
@@ -252,6 +271,36 @@ class RAGPipeline:
         full_answer = "".join(full_answer_parts)
         self.memory.add_user_message(question)
         self.memory.add_assistant_message(full_answer)
+
+        # Sauvegarder l'interaction dans l'historique
+        try:
+            from user import get_interaction_history
+            history = get_interaction_history(user_id)
+            history.save_interaction(
+                question=question,
+                answer=full_answer,
+                sources=[],
+                chunks_used=0,
+            )
+        except Exception:
+            pass
+
+        # Évolution du profil ACPE (non-bloquant)
+        try:
+            from user.profile import UserProfileManager
+            mgr = UserProfileManager(user_id)
+            profile_data = mgr.get_profile()
+            if profile_data.get("adaptive_learning_enabled", True):
+                from user.profile_evolution import ProfileEvolutionEngine
+                evo = ProfileEvolutionEngine(user_id)
+                evo.analyze_interaction(
+                    question=question,
+                    answer=full_answer,
+                    sources=[],
+                    feedback=None,
+                )
+        except Exception as e:
+            logger.debug("ACPE evolution streaming (non-bloquant) : %s", e)
 
     def summarize_document(self, file_name: str) -> str:
         """

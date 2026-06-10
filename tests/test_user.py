@@ -278,7 +278,7 @@ class TestPersonalizedRecommender:
         rec = PersonalizedRecommender("test_beginner")
         params = rec.adapt_rag_parameters()
 
-        assert params["k"] == 3
+        assert params["k"] == 8  # 7 base + 1 (detailed default)
         assert params["temperature"] == 0.2
 
     def test_adapt_rag_parameters_expert(self) -> None:
@@ -292,8 +292,8 @@ class TestPersonalizedRecommender:
         rec = PersonalizedRecommender("test_expert")
         params = rec.adapt_rag_parameters()
 
-        assert params["k"] == 8
-        assert params["temperature"] == 0.4
+        assert params["k"] == 5  # 4 base + 1 (detailed default)
+        assert params["temperature"] == 0.1
 
     def test_learning_progress_score(self) -> None:
         """Vérifie le score de progression plafonné à 100."""

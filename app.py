@@ -82,6 +82,18 @@ def main() -> None:
         st.caption("Master SID 2025–2026")
         st.caption("HAMIDI Kamal")
 
+    # ═══ Onboarding Gate ═══
+    try:
+        from user import get_user_manager
+        _mgr = get_user_manager(st.session_state.user_id)
+        _profile = _mgr.get_profile()
+        if not _profile.get("onboarding_completed", False):
+            from pages.onboarding import show_onboarding_page
+            show_onboarding_page()
+            st.stop()
+    except Exception:
+        pass  # Si erreur, continuer normalement
+
     # ═══ Routage des pages ═══
     if page == "💬 Chat":
         from pages.chat import show_chat_page
