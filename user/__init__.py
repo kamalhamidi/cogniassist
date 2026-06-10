@@ -14,7 +14,7 @@ Usage :
 import logging
 
 from user.db import init_db, reset_system
-from user.profile import UserProfileManager
+from user.profile import UserProfileManager, PersonalProfileData
 from user.history import InteractionHistory
 from user.recommender import PersonalizedRecommender
 # ACPE models — importés pour que create_all() les détecte
@@ -22,6 +22,7 @@ from user.acpe_models import KnowledgeProfile, UsagePattern, ProgressivePrompt
 from user.knowledge_engine import KnowledgeProfileEngine
 from user.profile_evolution import ProfileEvolutionEngine
 from user.progressive import ProgressiveProfilingEngine
+from user.kmb_service import KMBManager
 
 logger = logging.getLogger("cogniassist.user")
 
@@ -29,9 +30,10 @@ __all__ = [
     "UserProfileManager", "InteractionHistory", "PersonalizedRecommender",
     "KnowledgeProfileEngine", "ProfileEvolutionEngine", "ProgressiveProfilingEngine",
     "KnowledgeProfile", "UsagePattern", "ProgressivePrompt",
+    "PersonalProfileData", "KMBManager",
     "get_user_manager", "get_interaction_history", "get_recommender",
     "get_knowledge_engine", "get_evolution_engine", "get_progressive_engine",
-    "reset_system",
+    "get_kmb_manager", "reset_system",
 ]
 
 # Initialiser les tables au chargement du module
@@ -114,3 +116,16 @@ def get_progressive_engine(user_id: str = "default") -> ProgressiveProfilingEngi
         Instance de ProgressiveProfilingEngine.
     """
     return ProgressiveProfilingEngine(user_id)
+
+
+def get_kmb_manager(user_id: str = "default") -> KMBManager:
+    """
+    Retourne un KMBManager pour l'utilisateur donné.
+
+    Args:
+        user_id: Identifiant de l'utilisateur.
+
+    Returns:
+        Instance de KMBManager.
+    """
+    return KMBManager(user_id)

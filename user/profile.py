@@ -523,3 +523,76 @@ class UserProfileManager:
         except Exception as e:
             self.session.rollback()
             logger.error("Erreur suppression document : %s", e)
+
+
+class PersonalProfileData(Base):
+    """Table stockant les données du questionnaire 'Know Me Better'."""
+
+    __tablename__ = "personal_profile_data"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(
+        String(50),
+        ForeignKey("user_profiles.user_id"),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+    date_of_birth = Column(String(50), nullable=True)
+    gender = Column(String(20), nullable=True)
+    country = Column(String(100), nullable=True)
+    languages = Column(Text, nullable=True)  # Stocké sous forme de JSON array
+    hobbies = Column(Text, nullable=True)  # Stocké sous forme de JSON array
+    interests = Column(Text, nullable=True)  # Stocké sous forme de JSON array
+    favorite_topics = Column(Text, nullable=True)  # Stocké sous forme de JSON array
+    content_preferences = Column(Text, nullable=True)  # Stocké sous forme de JSON array
+    followed_communities = Column(Text, nullable=True)  # Stocké sous forme de JSON array
+    current_skills = Column(Text, nullable=True)
+    future_skills = Column(Text, nullable=True)
+    yearly_goals = Column(Text, nullable=True)
+    learning_style = Column(Text, nullable=True)  # Stocké sous forme de JSON array
+    learning_frequency = Column(String(50), nullable=True)
+    occupation = Column(String(100), nullable=True)
+    industry = Column(String(100), nullable=True)
+    challenges = Column(Text, nullable=True)
+    motivations = Column(Text, nullable=True)
+    communication_style = Column(String(50), nullable=True)
+    additional_information = Column(Text, nullable=True)
+    completion_percentage = Column(Integer, default=0)
+    kmb_onboarding_seen = Column(Boolean, default=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self) -> dict:
+        """Convertit l'instance en dictionnaire en décodant le JSON."""
+        def decode_json(val):
+            if not val:
+                return []
+            try:
+                return json.loads(val)
+            except Exception:
+                return []
+
+        return {
+            "date_of_birth": self.date_of_birth or "",
+            "gender": self.gender or "Prefer not to say",
+            "country": self.country or "",
+            "languages": decode_json(self.languages),
+            "hobbies": decode_json(self.hobbies),
+            "interests": self.interests or "",
+            "favorite_topics": self.favorite_topics or "",
+            "content_preferences": decode_json(self.content_preferences),
+            "followed_communities": self.followed_communities or "",
+            "current_skills": self.current_skills or "",
+            "future_skills": self.future_skills or "",
+            "yearly_goals": self.yearly_goals or "",
+            "learning_style": decode_json(self.learning_style),
+            "learning_frequency": self.learning_frequency or "",
+            "occupation": self.occupation or "",
+            "industry": self.industry or "",
+            "challenges": self.challenges or "",
+            "motivations": self.motivations or "",
+            "communication_style": self.communication_style or "",
+            "additional_information": self.additional_information or "",
+            "completion_percentage": self.completion_percentage,
+            "kmb_onboarding_seen": self.kmb_onboarding_seen,
+        }

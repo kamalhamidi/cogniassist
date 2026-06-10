@@ -71,8 +71,8 @@ def show_profile_page() -> None:
     st.divider()
 
     # ═══ Onglets ═══
-    tab_prefs, tab_context, tab_privacy = st.tabs([
-        "⚙️ Préférences", "🎯 Contexte RAG", "🔒 Données & Confidentialité",
+    tab_prefs, tab_context, tab_privacy, tab_kmb = st.tabs([
+        "⚙️ Préférences", "🎯 Contexte RAG", "🔒 Données & Confidentialité", "🧠 Know Me Better",
     ])
 
     # ─── Tab 1 : Préférences ───
@@ -391,3 +391,11 @@ def show_profile_page() -> None:
                 st.rerun()
             except Exception as e:
                 st.error(f"Erreur lors de la réinitialisation : {e}")
+
+    # ─── Tab 4 : Know Me Better ───
+    with tab_kmb:
+        try:
+            from pages.know_me_better import show_kmb_page
+            show_kmb_page(is_onboarding=False)
+        except Exception as e:
+            st.error(f"Erreur d'affichage Know Me Better : {e}")

@@ -94,6 +94,17 @@ def main() -> None:
     except Exception:
         pass  # Si erreur, continuer normalement
 
+    # ═══ Know Me Better Gate ═══
+    try:
+        from user import get_kmb_manager
+        _kmb_mgr = get_kmb_manager(st.session_state.user_id)
+        if not _kmb_mgr.has_seen_kmb_onboarding() and not st.session_state.get("kmb_skipped", False):
+            from pages.know_me_better import show_kmb_page
+            show_kmb_page(is_onboarding=True)
+            st.stop()
+    except Exception:
+        pass  # Si erreur, continuer normalement
+
     # ═══ Routage des pages ═══
     if page == "💬 Chat":
         from pages.chat import show_chat_page
