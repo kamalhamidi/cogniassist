@@ -67,6 +67,11 @@ class VectorStore:
         # Obtenir ou créer la collection
         self.collection = self._get_or_create_collection()
 
+        # Collection séparée pour les écrits personnels (Layer 2 — identité).
+        # Créée à la demande via get_personal_writing_collection().
+        self.personal_writing_collection_name = settings.PERSONAL_WRITING_COLLECTION
+        self._personal_writing_collection: Optional[chromadb.Collection] = None
+
         logger.info(
             "VectorStore initialisé — collection '%s' (%d chunks), persist : %s",
             self.collection_name, self.collection.count(), self.persist_directory,
@@ -399,3 +404,129 @@ class VectorStore:
         self._client.delete_collection(self.collection_name)
         self.collection = self._get_or_create_collection()
         logger.info("Collection '%s' réinitialisée.", self.collection_name)
+
+    # ═══════════════════════════════════════════════════════════════════
+    # Collection « personal_writing » (Layer 2 — Identité)
+    # ═══════════════════════════════════════════════════════════════════
+
+    def get_personal_writing_collection(self) -> chromadb.Collection:
+        """Retourne (crée si nécessaire) la collection 'personal_writing'."""
+        if self._personal_writing_collection is None:
+            self._personal_writing_collection = self._client.get_or_create_collection(
+                name=self.personal_writing_collection_name,
+                metadata={"hnsw:space": "cosine"},
+            )
+            logger.info(
+                "Collection '%s' prête (%d chunks).",
+                self.personal_writing_collection_name,
+                self._personal_writing_collection.count(),
+            )
+        return self._personal_writing_collection
+
+    def add_personal_writing(self, chunks: list[Document]) -> int:
+        """
+        Ajoute des chunks à la collection 'personal_writing'.
+
+        Args:
+            chunks: Liste de Documents LangChain (écrits personnels).
+
+        Returns:
+            Nombre de chunks effectivement ajoutés (hors doublons).
+        """
+        if not chunks:
+            return 0
+
+        collection = self.get_personal_writing_collection()
+
+        texts: list[str] = []
+        metadatas: list[dict] = []
+        ids: list[str] = []
+        for chunk in chunks:
+            chunk_id = chunk.metadata.get("chunk_id", str(uuid.uuid4()))
+            ids.append(chunk_id)
+            texts.append(chunk.page_content)
+            clean_meta = {
+                k: v for k, v in chunk.metadata.items()
+                if isinstance(v, (str, int, float, bool))
+            }
+            metadatas.append(clean_meta)
+
+        # Déduplication au sein du batch
+        seen: set[str] = set()
+        d_ids, d_texts, d_metas = [], [], []
+        for cid, t, m in zip(ids, texts, metadatas):
+            if cid not in seen:
+                seen.add(cid)
+                d_ids.append(cid)
+                d_texts.append(t)
+                d_metas.append(m)
+
+        # Filtrer contre les IDs déjà présents
+        if collection.count() > 0:
+            try:
+                existing = collection.get(ids=d_ids, include=[])
+                existing_ids = set(existing["ids"]) if existing and existing.get("ids") else set()
+            except Exception:
+                existing_ids = set()
+            new_ids, new_texts, new_metas = [], [], []
+            for cid, t, m in zip(d_ids, d_texts, d_metas):
+                if cid not in existing_ids:
+                    new_ids.append(cid)
+                    new_texts.append(t)
+                    new_metas.append(m)
+        else:
+            new_ids, new_texts, new_metas = d_ids, d_texts, d_metas
+
+        if not new_ids:
+            logger.info("Aucun nouvel écrit personnel à ajouter (doublons).")
+            return 0
+
+        embeddings = self.embedding_manager.embed_documents(new_texts)
+
+        total_added = 0
+        for i in range(0, len(new_ids), BATCH_SIZE):
+            end = min(i + BATCH_SIZE, len(new_ids))
+            collection.add(
+                ids=new_ids[i:end],
+                documents=new_texts[i:end],
+                embeddings=embeddings[i:end],
+                metadatas=new_metas[i:end],
+            )
+            total_added += end - i
+
+        logger.info(
+            "%d écrit(s) personnel(s) ajouté(s) à la collection '%s'.",
+            total_added, self.personal_writing_collection_name,
+        )
+        return total_added
+
+    def get_personal_writing_chunks(self, limit: int = 500) -> list[dict]:
+        """
+        Retourne tous les chunks de 'personal_writing' sous forme de
+        liste de dicts {text, id}.
+
+        Args:
+            limit: Nombre maximum de chunks à retourner.
+
+        Returns:
+            Liste de dicts {text, id}.
+        """
+        collection = self.get_personal_writing_collection()
+        if collection.count() == 0:
+            return []
+
+        try:
+            data = collection.get(include=["documents"], limit=limit)
+        except Exception as e:
+            logger.warning("Lecture écrits personnels échouée : %s", e)
+            return []
+
+        docs = data.get("documents", []) if data else []
+        ids = data.get("ids", []) if data else []
+        result: list[dict] = []
+        for i, text in enumerate(docs):
+            result.append({
+                "text": text,
+                "id": ids[i] if i < len(ids) else f"pw_{i}",
+            })
+        return result

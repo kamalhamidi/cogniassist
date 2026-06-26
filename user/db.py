@@ -76,6 +76,13 @@ def init_db() -> None:
     Doit être appelée une fois au démarrage de l'application.
     """
     engine = get_engine()
+
+    # Importer tous les modèles pour que create_all() les détecte.
+    # Imports locaux pour éviter les imports circulaires (ces modules
+    # importent Base depuis ce fichier).
+    from user.acpe_models import KnowledgeProfile, UsagePattern, ProgressivePrompt  # noqa: F401
+    from user.identity_models import StyleProfile, BeliefStore, StyleCorrection  # noqa: F401
+
     Base.metadata.create_all(engine)
 
     # Migration à la volée des colonnes ACPE si la table existait déjà
@@ -181,6 +188,7 @@ def reset_system() -> None:
         from user.profile import UserProfile, UserPreferences, DocumentAccess
         from user.history import Interaction
         from user.acpe_models import KnowledgeProfile, UsagePattern, ProgressivePrompt
+        from user.identity_models import StyleProfile, BeliefStore, StyleCorrection
         
         Base.metadata.drop_all(engine)
         

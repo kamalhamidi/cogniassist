@@ -75,8 +75,9 @@ def show_profile_page() -> None:
     st.divider()
 
     # ═══ Onglets ═══
-    tab_prefs, tab_context, tab_privacy, tab_kmb = st.tabs([
-        "⚙️ Préférences", "🎯 Contexte RAG", "🔒 Données & Confidentialité", "🧠 Know Me Better",
+    tab_prefs, tab_context, tab_privacy, tab_kmb, tab_identity = st.tabs([
+        "⚙️ Préférences", "🎯 Contexte RAG", "🔒 Données & Confidentialité",
+        "🧠 Know Me Better", "🧠 Mon identité",
     ])
 
     # ─── Tab 1 : Préférences ───
@@ -403,6 +404,145 @@ def show_profile_page() -> None:
             show_kmb_page(is_onboarding=False)
         except Exception as e:
             st.error(f"Erreur d'affichage Know Me Better : {e}")
+
+    # ─── Tab 5 : Mon identité (Layer 2 — Second cerveau) ───
+    with tab_identity:
+        _show_identity_tab(user_id)
+
+
+def _show_identity_tab(user_id: str) -> None:
+    """Affiche l'onglet identité : style, croyances, mode second cerveau."""
+    from rag import get_pipeline
+
+    try:
+        pipeline = get_pipeline()
+    except Exception as e:
+        st.error(f"Pipeline indisponible : {e}")
+        return
+
+    # ── Section A : Style d'écriture ──
+    st.subheader("✍️ Style d'écriture")
+    try:
+        from user.db import get_session
+        session = get_session()
+        style = pipeline.style_analyzer.get_profile(session)
+    except Exception:
+        style = None
+
+    if style and style.get("source_word_count", 0) > 0:
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Mots/phrase", f"{style['avg_sentence_len']:.0f}")
+        c2.metric("Formalité", f"{style['formality_score'] * 100:.0f}%")
+        c3.metric("Ton", style["tone"].capitalize())
+        c4, c5, c6 = st.columns(3)
+        c4.metric("Longueur préférée", style["preferred_length"].capitalize())
+        c5.metric("Richesse lexicale", f"{style['vocabulary_richness'] * 100:.0f}%")
+        c6.metric("Mots analysés", style["source_word_count"])
+
+        if style.get("style_prompt_fragment"):
+            st.info(f"🗣️ **Votre voix :** {style['style_prompt_fragment']}")
+    else:
+        st.info(
+            "Aucun profil de style calculé. Importez vos écrits personnels "
+            "depuis la page **Documents → Alimenter mon identité**."
+        )
+
+    st.divider()
+
+    # ── Section B : Croyances extraites ──
+    st.subheader("Ce que je crois (extrait de mes écrits)")
+    try:
+        beliefs = pipeline.belief_extractor.get_all_beliefs()
+    except Exception:
+        beliefs = []
+
+    active = [b for b in beliefs if b["status"] in ("active", "user_confirmed")]
+    conflicts = [b for b in beliefs if b["status"] == "conflicted"]
+
+    st.caption(
+        f"{len(active)} croyance(s) active(s), "
+        f"{len(conflicts)} conflit(s) à résoudre."
+    )
+
+    conf_colors = {"high": "success", "medium": "primary", "low": "muted"}
+
+    # Conflits d'abord (à résoudre)
+    if conflicts:
+        # Regrouper les conflits par paires (même topic le plus proche)
+        st.markdown("#### ⚠️ Conflits à résoudre")
+        # On présente chaque croyance conflictuelle avec un bouton de confirmation
+        for b in conflicts:
+            with st.container(border=True):
+                st.warning(
+                    f"**{b['topic']}** — {b['position']}\n\n"
+                    f"_Confiance : {b['confidence']}_"
+                )
+                # Trouver les autres croyances conflictuelles sur un sujet proche
+                others = [
+                    o for o in conflicts
+                    if o["id"] != b["id"]
+                ]
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    if st.button(
+                        "C'est ma vision actuelle",
+                        key=f"keep_{b['id']}",
+                        use_container_width=True,
+                    ):
+                        # Marquer celle-ci confirmée et les autres conflits supersédées
+                        for o in others:
+                            pipeline.belief_extractor.resolve_conflict(b["id"], o["id"])
+                        if not others:
+                            pipeline.belief_extractor.resolve_conflict(b["id"], b["id"])
+                        st.rerun()
+                with col_b:
+                    st.caption(f"Statut : {b['status']}")
+
+    # Croyances actives
+    if active:
+        from ui import stat_badge
+        st.markdown("#### Mes croyances actives")
+        for b in active:
+            badge = stat_badge(
+                b["confidence"], conf_colors.get(b["confidence"], "primary"),
+            )
+            st.html(
+                f"<div style='margin-bottom:8px'>"
+                f"<b>{b['topic']}</b> {badge}<br>"
+                f"<span style='color:#6B6880'>{b['position']}</span></div>"
+            )
+    elif not conflicts:
+        st.caption("Aucune croyance extraite pour le moment.")
+
+    st.divider()
+
+    # ── Section C : Mode identité ──
+    st.subheader("🧠 Mode second cerveau")
+    ready = False
+    try:
+        ready = pipeline.identity_builder.is_identity_mode_ready()
+    except Exception:
+        ready = False
+
+    if not ready:
+        st.warning(
+            "Importez d'abord vos écrits personnels pour activer ce mode."
+        )
+
+    enabled = st.toggle(
+        "Activer le mode second cerveau",
+        value=pipeline.identity_mode_enabled,
+        disabled=not ready,
+        key="toggle_identity_mode",
+        help="CogniAssist répondra en imitant votre style et vos positions.",
+    )
+    if enabled != pipeline.identity_mode_enabled:
+        pipeline.enable_identity_mode(enabled)
+        st.toast(
+            "🧠 Mode second cerveau activé." if enabled
+            else "Mode second cerveau désactivé."
+        )
+        st.rerun()
 
 
 if __name__ == "__main__":

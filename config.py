@@ -56,6 +56,13 @@ class Settings(BaseSettings):
     HYBRID_DENSE_WEIGHT: float = 0.6
     HYBRID_SPARSE_WEIGHT: float = 0.4
 
+    # === Identity Layer (Layer 2 — Second Brain) ===
+    PERSONAL_WRITING_COLLECTION: str = "personal_writing"
+    IDENTITY_MODE_DEFAULT: bool = False
+    MIN_BELIEFS_FOR_IDENTITY_MODE: int = 3
+    BELIEF_CONFLICT_THRESHOLD: float = 0.85  # similarité cosinus
+    BELIEF_TOPIC_SIMILARITY_THRESHOLD: float = 0.80
+
     # === Application ===
     APP_NAME: str = "CogniAssist"
     DEBUG: bool = False

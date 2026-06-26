@@ -52,6 +52,17 @@ def show_chat_page() -> None:
     # ─────────────────────────────────────────────
     with col_suggestions:
         from ui import section_title
+
+        # Indicateur de mode second cerveau (Layer 2 — Identité)
+        try:
+            _pipe = _get_pipeline()
+            if (_pipe.identity_mode_enabled
+                    and _pipe.identity_builder is not None
+                    and _pipe.identity_builder.is_identity_mode_ready()):
+                st.success("🧠 Mode second cerveau actif")
+        except Exception:
+            pass
+
         section_title("💡 Questions suggérées")
 
         try:
@@ -153,6 +164,32 @@ def show_chat_page() -> None:
                         with c2:
                             st.button("👎", key=f"down_{idx}_{iid}",
                                       on_click=_save_feedback, args=(iid, -1))
+
+                    # ─── Correction stylistique (Layer 2 — Identité) ───
+                    prev = (
+                        st.session_state.messages[idx - 1] if idx > 0 else None
+                    )
+                    query_text = (
+                        prev["content"]
+                        if prev and prev.get("role") == "user" else ""
+                    )
+                    with st.expander("✏️ Ce n'est pas ma façon de dire ça"):
+                        corrected = st.text_area(
+                            "Reformulez la réponse à votre manière :",
+                            value=message["content"],
+                            key=f"corr_{idx}",
+                            height=150,
+                        )
+                        if st.button(
+                            "💾 Enregistrer ma version", key=f"savecorr_{idx}",
+                        ):
+                            try:
+                                pipeline.save_style_correction(
+                                    query_text, message["content"], corrected,
+                                )
+                                st.toast("Merci ! Votre style a été pris en compte. ✍️")
+                            except Exception as e:
+                                st.error(f"Erreur : {e}")
 
         # ─── Input utilisateur ───
         prompt = st.chat_input("Posez votre question sur vos documents...")

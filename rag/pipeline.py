@@ -14,7 +14,7 @@ import time
 from typing import Generator, Optional
 
 from langchain_ollama import ChatOllama
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 
 from config import settings
 from vectorstore.store import VectorStore
@@ -63,6 +63,31 @@ class RAGPipeline:
         self.prompt_builder = PromptBuilder()
         self.memory = ConversationMemory(max_messages=10)
 
+        # ── Layer 2 — Identité (second cerveau) ──
+        try:
+            from user.style_analyzer import StyleAnalyzer
+            from user.belief_extractor import BeliefExtractor
+            from user.identity_prompt_builder import IdentityPromptBuilder
+            from user import get_user_manager
+
+            self.style_analyzer = StyleAnalyzer()
+            self.belief_extractor = BeliefExtractor(
+                llm=self.llm,
+                embedder=self._vector_store.embedding_manager,
+            )
+            self.identity_builder = IdentityPromptBuilder(
+                style_analyzer=self.style_analyzer,
+                belief_extractor=self.belief_extractor,
+                profile_manager=get_user_manager("default"),
+            )
+        except Exception as e:
+            logger.error("Initialisation de la couche identité échouée : %s", e)
+            self.style_analyzer = None
+            self.belief_extractor = None
+            self.identity_builder = None
+
+        self.identity_mode_enabled: bool = settings.IDENTITY_MODE_DEFAULT
+
         # Vérifier la disponibilité
         self.is_ready: bool = False
         self._check_readiness()
@@ -84,6 +109,90 @@ class RAGPipeline:
                 "Lancez : ollama run %s",
                 str(e), settings.ollama_model,
             )
+
+    def enable_identity_mode(self, enabled: bool) -> None:
+        """Active ou désactive le mode identité (second cerveau)."""
+        self.identity_mode_enabled = enabled
+        logger.info("Mode identité %s.", "activé" if enabled else "désactivé")
+
+    def _use_identity_mode(self) -> bool:
+        """Indique si le mode identité doit être utilisé pour cette requête."""
+        return bool(
+            self.identity_mode_enabled
+            and self.identity_builder is not None
+            and self.identity_builder.is_identity_mode_ready()
+        )
+
+    def _build_messages(
+        self,
+        question: str,
+        context: str,
+        chat_history: str,
+        user_profile: str,
+    ) -> list:
+        """
+        Construit la liste de messages pour le LLM.
+
+        En mode identité : prompt système « second cerveau » + message utilisateur.
+        Sinon : comportement standard (prompt RAG unique) — aucun changement.
+        """
+        if self._use_identity_mode():
+            logger.info("Mode identité (second cerveau) utilisé pour cette requête.")
+            system_prompt = self.identity_builder.build_system_prompt(question)
+            user_content = (
+                f"Historique de la conversation :\n{chat_history or '(aucun)'}\n\n"
+                f"Contexte issu de ses écrits et documents :\n{context}\n\n"
+                f"Question :\n{question}"
+            )
+            return [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_content),
+            ]
+
+        prompt = self.prompt_builder.build_rag_prompt(
+            question=question,
+            context=context,
+            chat_history=chat_history,
+            user_profile=user_profile,
+        )
+        return [HumanMessage(content=prompt)]
+
+    def save_style_correction(
+        self, query: str, generated: str, corrected: str,
+    ) -> None:
+        """
+        Enregistre une correction stylistique de l'utilisateur et recalcule
+        le profil de style en intégrant les corrections.
+        """
+        from user.identity_models import StyleCorrection
+        from user.db import get_session
+
+        session = get_session()
+        try:
+            rec = StyleCorrection(
+                query=query, generated=generated, corrected=corrected,
+            )
+            session.add(rec)
+            session.commit()
+            logger.info("Correction stylistique enregistrée.")
+        except Exception as e:
+            session.rollback()
+            logger.error("Erreur enregistrement correction : %s", e)
+
+        # Recalcule (optionnel, non-bloquant) le profil de style
+        try:
+            if self.style_analyzer is not None:
+                texts = [
+                    c["text"]
+                    for c in self._vector_store.get_personal_writing_chunks()
+                ]
+                corrections = [r.corrected for r in session.query(StyleCorrection).all()]
+                all_texts = texts + corrections
+                if all_texts:
+                    metrics = self.style_analyzer.analyze(all_texts)
+                    self.style_analyzer.save_profile(metrics, session)
+        except Exception as e:
+            logger.debug("Recalcul du style après correction échoué : %s", e)
 
     def ask(
         self,
@@ -134,8 +243,8 @@ class RAGPipeline:
         # 3. Historique de conversation
         chat_history = self.memory.get_formatted_history()
 
-        # 4. Construire le prompt
-        prompt = self.prompt_builder.build_rag_prompt(
+        # 4. Construire les messages (mode identité ou standard)
+        messages = self._build_messages(
             question=question,
             context=context,
             chat_history=chat_history,
@@ -144,7 +253,7 @@ class RAGPipeline:
 
         # 5. Appeler le LLM
         try:
-            response = self.llm.invoke([HumanMessage(content=prompt)])
+            response = self.llm.invoke(messages)
             answer = response.content
         except Exception as e:
             logger.error("Erreur lors de l'appel au LLM : %s", str(e))
@@ -244,10 +353,10 @@ class RAGPipeline:
         k = params["k"]
         user_profile = params["user_profile"]
 
-        # Construire le prompt
+        # Construire les messages (mode identité ou standard)
         context = self.retriever.retrieve_with_context_window(question, k=k)
         chat_history = self.memory.get_formatted_history()
-        prompt = self.prompt_builder.build_rag_prompt(
+        messages = self._build_messages(
             question=question,
             context=context,
             chat_history=chat_history,
@@ -257,7 +366,7 @@ class RAGPipeline:
         # Streaming token par token
         full_answer_parts: list[str] = []
         try:
-            for chunk in self.llm.stream([HumanMessage(content=prompt)]):
+            for chunk in self.llm.stream(messages):
                 token = chunk.content
                 full_answer_parts.append(token)
                 yield token

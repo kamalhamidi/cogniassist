@@ -171,6 +171,133 @@ def show_upload_page() -> None:
                             except Exception as e:
                                 st.error(f"Erreur suppression : {e}")
 
+    # ═══════════════════════════════════════════
+    # Section : Écrits personnels (Layer 2 — Identité)
+    # ═══════════════════════════════════════════
+    st.divider()
+    _show_personal_writing_section(user_id)
+
+
+def _show_personal_writing_section(user_id: str) -> None:
+    """Section d'import des écrits personnels pour alimenter l'identité."""
+    from ui import section_title
+    section_title("🧠 Alimenter mon identité")
+    st.caption(
+        "Importez vos écrits personnels (journal, essais, messages) pour que "
+        "CogniAssist apprenne votre voix et vos opinions."
+    )
+
+    pw_files = st.file_uploader(
+        "Mes journaux, essais, notes personnelles",
+        type=["txt", "md"],
+        accept_multiple_files=True,
+        key="pw_uploader",
+        help="Formats supportés : TXT, Markdown",
+    )
+
+    from datetime import date as _date
+    pw_date = st.date_input(
+        "Date approximative de ces écrits",
+        value=None,
+        key="pw_date",
+        help="Utilisée pour le suivi temporel de vos positions (optionnel).",
+    )
+
+    if pw_files and st.button(
+        "🧠 Analyser mes écrits", type="primary", key="btn_ingest_pw",
+    ):
+        date_written = pw_date if isinstance(pw_date, _date) else None
+        _ingest_personal_writing(user_id, pw_files, date_written)
+
+
+def _ingest_personal_writing(user_id: str, files: list, date_written) -> None:
+    """Charge, indexe, analyse le style et extrait les croyances des écrits."""
+    from ingestion import ingest_file
+    from vectorstore.store import VectorStore
+    from rag import get_pipeline
+
+    all_chunks = []           # Documents LangChain pour ChromaDB
+    style_texts: list[str] = []  # textes bruts pour l'analyse de style
+    belief_chunks: list[dict] = []  # {text, chunk_id} pour l'extraction
+
+    progress = st.progress(0.0, text="Lecture des fichiers…")
+    total = len(files)
+
+    for i, file in enumerate(files):
+        try:
+            file_bytes = file.read()
+            chunks, _stats = ingest_file(file_bytes, file.name)
+            for c in chunks:
+                # Marquer comme écrit personnel
+                c.metadata["source_type"] = "personal_writing"
+                all_chunks.append(c)
+                style_texts.append(c.page_content)
+                belief_chunks.append({
+                    "text": c.page_content,
+                    "chunk_id": c.metadata.get("chunk_id", f"pw_{file.name}_{i}"),
+                })
+        except Exception as e:
+            st.error(f"❌ Erreur sur {file.name} : {e}")
+        progress.progress((i + 1) / total, text=f"Lecture… ({i + 1}/{total})")
+
+    progress.empty()
+
+    if not all_chunks:
+        st.warning("Aucun contenu exploitable dans les fichiers fournis.")
+        return
+
+    # 1. Indexer dans la collection personal_writing
+    try:
+        store = VectorStore()
+        added = store.add_personal_writing(all_chunks)
+        st.caption(f"📥 {added} extrait(s) indexé(s) dans vos écrits personnels.")
+    except Exception as e:
+        st.error(f"Erreur indexation : {e}")
+
+    pipeline = get_pipeline()
+
+    # 2. Analyse du style (rapide, non bloquante)
+    try:
+        from user.db import get_session
+        with st.spinner("Analyse de votre style d'écriture…"):
+            session = get_session()
+            metrics = pipeline.style_analyzer.analyze(style_texts)
+            pipeline.style_analyzer.save_profile(metrics, session)
+        st.caption("✍️ Profil de style mis à jour.")
+    except Exception as e:
+        st.warning(f"Analyse du style indisponible : {e}")
+
+    # 3. Extraction des croyances via le LLM (dégradation gracieuse)
+    beliefs_count = 0
+    if not pipeline.is_ready:
+        st.toast("⚠️ Ollama non démarré — extraction des croyances ignorée.")
+    else:
+        try:
+            beliefs_count = pipeline.belief_extractor.extract_from_chunks(
+                belief_chunks, date_written=date_written,
+            )
+        except Exception as e:
+            st.toast(f"⚠️ Extraction des croyances échouée : {e}")
+
+    # 4. Récapitulatif
+    st.success(
+        f"{beliefs_count} croyances extraites. "
+        f"Votre profil d'identité a été mis à jour."
+    )
+
+    # 5. Aperçu des croyances extraites
+    try:
+        beliefs = pipeline.belief_extractor.get_all_beliefs()
+        if beliefs:
+            with st.expander("🔍 Aperçu des croyances extraites", expanded=True):
+                for b in beliefs[:10]:
+                    st.markdown(f"**{b['topic']}** — {b['position']}")
+                    st.caption(f"Confiance : {b['confidence']} · Statut : {b['status']}")
+    except Exception:
+        pass
+
+    st.cache_data.clear()
+
 
 if __name__ == "__main__":
     st.session_state.current_page = "📁 Documents"

@@ -24,6 +24,7 @@ Ce document recense **l'intégralité des fonctionnalités** réellement présen
    - [3.9 Profil, données & confidentialité](#39-profil-données--confidentialité)
    - [3.10 Évaluation qualité (RAGAS)](#310-évaluation-qualité-ragas)
    - [3.11 Tests & scripts utilitaires](#311-tests--scripts-utilitaires)
+   - [3.12 Identité & mode « second cerveau » (Layer 2)](#312-identité--mode--second-cerveau--layer-2)
 4. [Modèle de données](#4-modèle-de-données-sqlite)
 5. [Stack technologique](#5-stack-technologique)
 6. [Configuration](#6-configuration)
@@ -47,6 +48,7 @@ Au-delà du RAG classique, CogniAssist se distingue par son **moteur de profilag
 | 🧩 **Recherche hybride** | Fusion dense (embeddings) + sparse (BM25) via Reciprocal Rank Fusion. |
 | 📊 **Transparence** | Sources affichées, paramètres RAG expliqués, insights comportementaux. |
 | 🧪 **Qualité mesurable** | Évaluation automatique via RAGAS. |
+| 🧬 **Second cerveau (Layer 2)** | Extraction d'identité : style d'écriture, croyances/positions et mode « second cerveau » qui répond comme l'utilisateur. |
 
 ---
 
@@ -68,17 +70,17 @@ cogniassist/
 │
 ├── vectorstore/               # Embeddings & recherche
 │   ├── embedder.py            # Embeddings Ollama (nomic-embed-text) + fallback
-│   ├── store.py               # ChromaDB (CRUD, déduplication, stats)
+│   ├── store.py               # ChromaDB (CRUD, dédup, stats) + collection personal_writing
 │   ├── bm25_index.py          # Index sparse BM25 (build, add, remove, retrieve)
 │   └── retriever.py           # SmartRetriever (dense+rerank) + HybridRetriever (RRF)
 │
 ├── rag/                       # Cœur RAG
-│   ├── pipeline.py            # RAGPipeline (ask, ask_stream, summarize, gaps)
+│   ├── pipeline.py            # RAGPipeline (ask, ask_stream, summarize, gaps, mode identité)
 │   ├── prompt_builder.py      # Construction des prompts (RAG / résumé / lacunes)
 │   ├── memory.py              # Mémoire de conversation glissante (10 tours)
 │   └── summarizer.py          # Résumé par lot + rapport de connaissances
 │
-├── user/                      # Profils & personnalisation (ACPE)
+├── user/                      # Profils & personnalisation (ACPE + Identité)
 │   ├── db.py                  # Connexion SQLite/SQLAlchemy + reset système
 │   ├── profile.py             # UserProfile / Preferences / DocumentAccess + manager
 │   ├── history.py             # Historique des interactions + stats + feedback
@@ -87,7 +89,11 @@ cogniassist/
 │   ├── knowledge_engine.py    # Profil de connaissances par domaine (EMA)
 │   ├── profile_evolution.py   # Détection de tendances + génération d'insights
 │   ├── progressive.py         # Suggestions de profiling progressif (cooldown)
-│   └── kmb_service.py         # Service « Know Me Better »
+│   ├── kmb_service.py         # Service « Know Me Better »
+│   ├── identity_models.py     # 🧬 Tables Identité (StyleProfile, BeliefStore, StyleCorrection)
+│   ├── style_analyzer.py      # 🧬 Empreinte stylistique (stdlib uniquement)
+│   ├── belief_extractor.py    # 🧬 Extraction de croyances via LLM + détection de conflits
+│   └── identity_prompt_builder.py  # 🧬 Prompt système « second cerveau »
 │
 ├── evaluation/                # Mesure de qualité
 │   ├── ragas_eval.py          # Évaluation RAGAS (faithfulness, relevancy, etc.)
@@ -106,7 +112,7 @@ cogniassist/
 │   ├── rebuild_bm25.py        # Reconstruction de l'index BM25
 │   └── test_hybrid_retrieval.py
 │
-├── tests/                     # Tests pytest (ingestion, vectorstore, rag, user, acpe, kmb, eval)
+├── tests/                     # Tests pytest (ingestion, vectorstore, rag, user, acpe, kmb, eval, identity)
 ├── data/                      # ChromaDB, SQLite, uploads, bm25_index.pkl (ignoré par git)
 └── assets/                    # logo.png
 ```
@@ -182,6 +188,7 @@ cogniassist/
 - **`analyze_knowledge_gaps()`** — Compare les documents disponibles aux **objectifs déclarés** pour identifier les lacunes.
 - **`clear_memory()`** — Réinitialise la conversation.
 - **`get_pipeline_status()`** — État complet pour l'UI (modèle, URL Ollama, nb messages, modèle d'embeddings, total indexé).
+- **Mode identité (Layer 2)** — `enable_identity_mode(enabled)`, `_use_identity_mode()`, `_build_messages()` (bascule prompt système « second cerveau » vs prompt RAG standard), `save_style_correction(query, generated, corrected)`. Désactivé par défaut → **aucun changement de comportement** quand il est OFF.
 
 **`PromptBuilder`** — 3 templates : `build_rag_prompt`, `build_summary_prompt`, `build_knowledge_gap_prompt`.
 
@@ -276,7 +283,7 @@ Page `dashboard.py`, alimentée par l'historique + l'ACPE :
 
 ### 3.9 Profil, données & confidentialité
 
-Page `profile.py`, organisée en **4 onglets** :
+Page `profile.py`, organisée en **5 onglets** :
 
 - **⚙️ Préférences** : nom, niveau d'expertise, style de réponse, langue (FR/EN/AR), domaines d'intérêt, objectifs.
 - **🎯 Contexte RAG** : prévisualisation **exacte** du contexte injecté dans les prompts (`get_personalization_context`), paramètres RAG adaptés (k, température) **avec explications de transparence**.
@@ -288,6 +295,7 @@ Page `profile.py`, organisée en **4 onglets** :
   - **Zone dangereuse** : effacer l'historique, réinitialiser le profil.
   - **Réinitialisation complète du système** (`reset_system`) avec double confirmation : profil + historique + documents + index ChromaDB & BM25.
 - **🧠 Know Me Better** : le questionnaire KMB intégré en mode expanders.
+- **🧠 Mon identité** (Layer 2) : profil de style (cartes de métriques + « votre voix »), croyances extraites (badges de confiance), résolution de conflits, et **toggle du mode second cerveau**. Voir §3.12.
 - En-tête de profil : avatar personnalisable, badges (niveau, type individuel/entreprise, rôle).
 
 ### 3.10 Évaluation qualité (RAGAS)
