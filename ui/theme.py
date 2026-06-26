@@ -64,7 +64,7 @@ html, body, [class*="css"], .stApp, button, input, textarea, select {
 
 /* Largeur & respiration du contenu principal */
 .block-container {
-    padding-top: 2.2rem;
+    padding-top: 1rem;
     padding-bottom: 4rem;
     max-width: 1180px;
 }
@@ -266,7 +266,18 @@ button[data-testid="stBaseButton-secondary"][kind] { border-radius: 12px; }
 /* ── Alertes (info/success/warning/error) ───────────────────────── */
 [data-testid="stAlert"] { border-radius: 14px; }
 
-/* ── Navigation segmentée (top nav) ─────────────────────────────── */
+/* ── Navigation segmentée (top nav) — fixée en haut au scroll ───── */
+/* Le conteneur du segmented control devient « sticky » pour rester
+   visible en haut de la page malgré le défilement. */
+div[data-testid="stElementContainer"]:has(div[data-testid="stSegmentedControl"]) {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    background: var(--ca-bg);
+    padding: 10px 0 10px;
+    margin-bottom: 2px;
+    box-shadow: 0 8px 18px -10px rgba(30, 27, 46, 0.25);
+}
 div[data-testid="stSegmentedControl"] {
     display: flex;
     justify-content: center;
@@ -304,9 +315,12 @@ div[data-testid="stSegmentedControl"] button[aria-selected="true"] {
 /* ── Divider plus discret ───────────────────────────────────────── */
 hr { border-color: var(--ca-border); opacity: 0.7; }
 
-/* Masquer le menu/footer Streamlit pour un rendu plus « produit » */
+/* Masquer le menu/footer/barre supérieure Streamlit (Deploy) pour un
+   rendu plus « produit » et libérer le haut de page pour la nav fixe. */
 #MainMenu { visibility: hidden; }
 footer { visibility: hidden; }
+[data-testid="stHeader"] { display: none; }
+[data-testid="stToolbar"] { display: none; }
 </style>
 """
 
