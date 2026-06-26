@@ -51,7 +51,8 @@ def show_chat_page() -> None:
     # Colonne droite : suggestions
     # ─────────────────────────────────────────────
     with col_suggestions:
-        st.subheader("💡 Questions suggérées")
+        from ui import section_title
+        section_title("💡 Questions suggérées")
 
         try:
             suggestions = _get_suggestions(user_id)
@@ -63,7 +64,7 @@ def show_chat_page() -> None:
             st.caption("Suggestions indisponibles")
 
         st.divider()
-        st.subheader("📋 Documents disponibles")
+        section_title("📋 Documents disponibles")
 
         try:
             docs = _get_docs(user_id)
@@ -85,7 +86,7 @@ def show_chat_page() -> None:
             suggestion = prog.check_for_prompts()
             if suggestion:
                 st.divider()
-                st.subheader("🎯 Suggestion")
+                section_title("🎯 Suggestion")
                 st.info(suggestion["message"])
                 col_yes, col_no = st.columns(2)
                 with col_yes:
@@ -104,8 +105,12 @@ def show_chat_page() -> None:
     # Colonne gauche : chat principal
     # ─────────────────────────────────────────────
     with col_chat:
-        st.title("💬 Chat intelligent")
-        st.caption("Posez vos questions sur vos documents personnels")
+        from ui import page_header
+        page_header(
+            "Chat intelligent",
+            "Posez vos questions sur vos documents personnels",
+            icon="💬",
+        )
 
         # Vérifier le pipeline
         pipeline = _get_pipeline()

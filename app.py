@@ -43,22 +43,29 @@ def main() -> None:
     """Point d'entrée principal de l'application."""
     init_session_state()
 
+    # ═══ Thème global ═══
+    from ui import apply_theme
+    apply_theme()
+
     # ═══ Sidebar ═══
     with st.sidebar:
-        st.title("🧠 CogniAssist")
-        st.caption("Assistant cognitif intelligent")
-        st.divider()
-
-        page = st.radio(
-            "Navigation",
-            options=["💬 Chat", "📁 Documents", "📊 Dashboard", "👤 Profil"],
-            index=["💬 Chat", "📁 Documents", "📊 Dashboard", "👤 Profil"].index(
-                st.session_state.current_page
-            ),
-            label_visibility="collapsed",
+        st.html(
+            """
+            <div style="display:flex;align-items:center;gap:12px;
+                        padding:6px 2px 14px;">
+                <div style="font-size:1.7rem;width:48px;height:48px;border-radius:14px;
+                            display:flex;align-items:center;justify-content:center;
+                            background:linear-gradient(135deg,#6C5CE7,#A855F7);
+                            box-shadow:0 8px 18px rgba(108,92,231,.35);">🧠</div>
+                <div>
+                    <div style="font-size:1.25rem;font-weight:800;color:#1E1B2E;
+                                line-height:1;">CogniAssist</div>
+                    <div style="font-size:.8rem;color:#6B6880;margin-top:2px;">
+                        Assistant cognitif intelligent</div>
+                </div>
+            </div>
+            """
         )
-        st.session_state.current_page = page
-
         st.divider()
 
         # Statut du pipeline
@@ -93,6 +100,56 @@ def main() -> None:
             st.stop()
     except Exception:
         pass  # Si erreur, continuer normalement
+
+    # ═══ Top Nav Bar ═══
+    if "query_page_checked" not in st.session_state:
+        query_page = st.query_params.get("page")
+        page_mapping = {
+            "chat": "💬 Chat",
+            "upload": "📁 Documents",
+            "dashboard": "📊 Dashboard",
+            "profile": "👤 Profil"
+        }
+        if query_page in page_mapping:
+            st.session_state.current_page = page_mapping[query_page]
+        elif st.session_state.get("current_page") in page_mapping.values():
+            page_reverse_mapping = {
+                "💬 Chat": "chat",
+                "📁 Documents": "upload",
+                "📊 Dashboard": "dashboard",
+                "👤 Profil": "profile"
+            }
+            st.query_params["page"] = page_reverse_mapping[st.session_state.current_page]
+        else:
+            st.session_state.current_page = "💬 Chat"
+            st.query_params["page"] = "chat"
+        st.session_state.query_page_checked = True
+
+    nav_pages = ["💬 Chat", "📁 Documents", "📊 Dashboard", "👤 Profil"]
+
+    selected_page = st.segmented_control(
+        "Navigation",
+        options=nav_pages,
+        default=st.session_state.current_page,
+        label_visibility="collapsed",
+        key="top_navbar"
+    )
+    
+    if selected_page and selected_page != st.session_state.current_page:
+        st.session_state.current_page = selected_page
+        page_reverse_mapping = {
+            "💬 Chat": "chat",
+            "📁 Documents": "upload",
+            "📊 Dashboard": "dashboard",
+            "👤 Profil": "profile"
+        }
+        st.query_params["page"] = page_reverse_mapping[selected_page]
+        st.rerun()
+    elif not selected_page:
+        st.rerun()
+
+    page = st.session_state.current_page
+    st.divider()
 
     # ═══ Know Me Better Gate ═══
     try:

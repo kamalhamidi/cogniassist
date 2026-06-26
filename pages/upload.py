@@ -19,8 +19,12 @@ def show_upload_page() -> None:
     """Affiche la page de gestion des documents."""
     user_id = st.session_state.get("user_id", "default")
 
-    st.title("📁 Gestion des documents")
-    st.caption("Importez vos fichiers PDF, DOCX ou TXT")
+    from ui import page_header
+    page_header(
+        "Gestion des documents",
+        "Importez vos fichiers PDF, DOCX ou TXT",
+        icon="📁",
+    )
 
     tab_upload, tab_library = st.tabs(["⬆️ Importer", "📚 Bibliothèque"])
 

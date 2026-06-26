@@ -50,8 +50,12 @@ def show_dashboard_page() -> None:
     """Affiche le tableau de bord."""
     user_id = st.session_state.get("user_id", "default")
 
-    st.title("📊 Tableau de bord")
-    st.caption("Votre activité et progression sur CogniAssist")
+    from ui import page_header
+    page_header(
+        "Tableau de bord",
+        "Votre activité et progression sur CogniAssist",
+        icon="📊",
+    )
 
     # Charger les données
     try:

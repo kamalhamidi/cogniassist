@@ -118,6 +118,9 @@ cogniassist/
       ollama run mistral:7b "hello"
    5. Then launch the app :
       streamlit run app.py
+      or 
+      ./venv/bin/streamlit run app.py
+
 
 L'application s'ouvre automatiquement dans votre navigateur à `http://localhost:8501`
 

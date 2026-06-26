@@ -97,16 +97,21 @@ def show_onboarding_page() -> None:
     step = st.session_state.onboarding_step
 
     # Header
-    st.markdown(
+    st.html(
         """
-        <div style="text-align:center; padding: 1rem 0;">
-            <h1 style="font-size: 2.5rem;">🧠 Bienvenue sur CogniAssist</h1>
-            <p style="font-size: 1.1rem; color: #888;">
+        <div style="text-align:center; padding: 1.5rem 0 0.5rem;">
+            <div style="font-size:3rem;width:84px;height:84px;border-radius:24px;
+                        margin:0 auto 14px;display:flex;align-items:center;
+                        justify-content:center;
+                        background:linear-gradient(135deg,#6C5CE7,#A855F7);
+                        box-shadow:0 16px 36px rgba(108,92,231,.35);">🧠</div>
+            <h1 style="font-size:2.4rem;font-weight:800;margin:0;color:#1E1B2E;">
+                Bienvenue sur CogniAssist</h1>
+            <p style="font-size:1.05rem;color:#6B6880;margin-top:.4rem;">
                 Configurons votre assistant cognitif en quelques étapes
             </p>
         </div>
-        """,
-        unsafe_allow_html=True,
+        """
     )
 
     # Barre de progression
@@ -135,21 +140,22 @@ def _step_1_user_type() -> None:
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown(
+        st.html(
             """
             <div style="
-                border: 2px solid #4CAF50; border-radius: 12px;
-                padding: 1.5rem; text-align: center; min-height: 200px;
+                border: 1px solid #ECEAF6; border-radius: 18px;
+                padding: 1.6rem; text-align: center; min-height: 200px;
+                background:#FFFFFF; box-shadow:0 8px 24px rgba(30,27,46,.06);
+                border-top:4px solid #6C5CE7;
             ">
                 <div style="font-size: 3rem;">👤</div>
-                <h3>Individuel</h3>
-                <p style="color: #888; font-size: 0.9rem;">
+                <h3 style="margin:.4rem 0;color:#1E1B2E;">Individuel</h3>
+                <p style="color: #6B6880; font-size: 0.9rem;">
                     Étudiant, chercheur, développeur...<br/>
                     Pour votre usage personnel
                 </p>
             </div>
-            """,
-            unsafe_allow_html=True,
+            """
         )
         if st.button(
             "👤 Choisir Individuel",
@@ -162,21 +168,22 @@ def _step_1_user_type() -> None:
             st.rerun()
 
     with col2:
-        st.markdown(
+        st.html(
             """
             <div style="
-                border: 2px solid #2196F3; border-radius: 12px;
-                padding: 1.5rem; text-align: center; min-height: 200px;
+                border: 1px solid #ECEAF6; border-radius: 18px;
+                padding: 1.6rem; text-align: center; min-height: 200px;
+                background:#FFFFFF; box-shadow:0 8px 24px rgba(30,27,46,.06);
+                border-top:4px solid #A855F7;
             ">
                 <div style="font-size: 3rem;">🏢</div>
-                <h3>Entreprise / Organisation</h3>
-                <p style="color: #888; font-size: 0.9rem;">
+                <h3 style="margin:.4rem 0;color:#1E1B2E;">Entreprise / Organisation</h3>
+                <p style="color: #6B6880; font-size: 0.9rem;">
                     Gestion de connaissances, support,<br/>
                     formation en entreprise
                 </p>
             </div>
-            """,
-            unsafe_allow_html=True,
+            """
         )
         if st.button(
             "🏢 Choisir Entreprise",

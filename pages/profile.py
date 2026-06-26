@@ -14,8 +14,12 @@ def show_profile_page() -> None:
     """Affiche la page de profil utilisateur."""
     user_id = st.session_state.get("user_id", "default")
 
-    st.title("👤 Mon profil")
-    st.caption("Personnalisez votre expérience CogniAssist")
+    from ui import page_header
+    page_header(
+        "Mon profil",
+        "Personnalisez votre expérience CogniAssist",
+        icon="👤",
+    )
 
     # Charger le profil
     try:
