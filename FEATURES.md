@@ -38,6 +38,8 @@ Ce document recense **l'intégralité des fonctionnalités** réellement présen
 
 Au-delà du RAG classique, CogniAssist se distingue par son **moteur de profilage cognitif adaptatif (ACPE)** qui apprend du comportement de l'utilisateur pour personnaliser les réponses, recommander des contenus et faire évoluer un profil de connaissances par domaine — le tout sans jamais envoyer de données dans le cloud.
 
+Une **couche d'identité (Layer 2)** va plus loin et fait de CogniAssist un véritable **second cerveau** : à partir des écrits personnels de l'utilisateur, le système extrait son **style d'écriture**, ses **croyances et positions**, puis peut répondre **avec sa voix et ses opinions** lorsque le « mode second cerveau » est activé (voir §3.12).
+
 **Piliers du produit :**
 
 | Pilier | Description |
@@ -313,13 +315,57 @@ Module `evaluation/` pour mesurer objectivement la qualité du RAG :
 
 ### 3.11 Tests & scripts utilitaires
 
-- **Tests pytest** : `test_ingestion`, `test_vectorstore`, `test_rag`, `test_user`, `test_acpe`, `test_kmb`, `test_evaluation`.
+- **Tests pytest** : `test_ingestion`, `test_vectorstore`, `test_rag`, `test_user`, `test_acpe`, `test_kmb`, `test_evaluation`, `test_identity`.
   ```bash
   pytest tests/ -v
   ```
 - **Scripts CLI** :
   - `scripts/rebuild_bm25.py` — Reconstruit l'index BM25 depuis ChromaDB.
   - `scripts/test_hybrid_retrieval.py` — Vérifie la recherche hybride.
+
+### 3.12 Identité & mode « second cerveau » (Layer 2)
+
+La **couche d'identité** transforme CogniAssist d'un assistant documentaire en
+un **second cerveau** qui connaît la voix, les opinions et l'expertise de
+l'utilisateur. Elle s'appuie sur les **écrits personnels** (journal, essais,
+notes) importés dans une **collection ChromaDB séparée** (`personal_writing`),
+sans jamais mélanger ces données avec les documents classiques.
+
+> ⚙️ **Désactivé par défaut.** Quand le mode identité est OFF, le pipeline se comporte exactement comme avant (aucune régression). Dégradation gracieuse : si Ollama est éteint, l'extraction de croyances échoue silencieusement (toast d'avertissement) sans jamais bloquer l'upload.
+
+#### `StyleAnalyzer` — Empreinte stylistique (`user/style_analyzer.py`)
+Analyse rapide (bibliothèque standard uniquement, aucune dépendance NLP) des
+écrits pour produire un profil de style :
+- **Longueur moyenne de phrase**, **richesse lexicale** (type-token ratio).
+- **Score de formalité** (0–1), **ratio de première personne**, **ratio d'atténuation** (hedging).
+- **Préférence d'exemples** (`examples_first` / `theory_first` / `balanced`).
+- **Longueur préférée** (`short` / `medium` / `long`).
+- **Ton dominant** (`direct` / `analytical` / `diplomatic` / `enthusiastic`).
+- **Compilation** en un *fragment de prompt* en langage naturel injectable dans le système.
+- Persistance : upsert d'une **ligne unique** dans `style_profile` (`save_profile` / `get_profile`).
+
+#### `BeliefExtractor` — Extraction de croyances (`user/belief_extractor.py`)
+Passe LLM (Mistral) sur chaque chunk d'écriture personnelle pour extraire des
+triplets **(topic, position, confidence)** :
+- **Prompt strict** retournant un JSON (max 3 croyances/chunk, sujets spécifiques).
+- **Parsing robuste** : tolère le markdown / le texte parasite, retourne `[]` en cas d'échec, **jamais de crash**, **jamais plus d'une tentative** par chunk.
+- **Détection de conflits sémantiques** : similarité cosinus entre embeddings ; si même sujet (≥ `BELIEF_CONFLICT_THRESHOLD`) mais positions divergentes → les deux croyances passent au statut `conflicted`.
+- **Statuts** : `active`, `conflicted`, `superseded`, `user_confirmed`.
+- **Récupération au moment de la requête** : `get_beliefs_for_topic(query, top_k)` (similarité cosinus, uniquement `active`/`user_confirmed`).
+- `get_all_beliefs` (pour l'UI), `resolve_conflict(keep, drop)` (l'utilisateur tranche), `extract_from_chunks` (batch avec barre de progression Streamlit).
+
+#### `IdentityPromptBuilder` — Prompt « second cerveau » (`user/identity_prompt_builder.py`)
+Assemble le prompt système d'identité au moment de la requête :
+- **Style** (fragment depuis `style_profile`, avec fallback générique).
+- **Positions pertinentes** sur le sujet de la question (via `BeliefExtractor`).
+- **Domaines d'expertise** (via `KnowledgeProfileEngine`).
+- **Règles absolues** : ne jamais inventer d'opinion, signaler l'absence de position, marquer l'incertain par `[non confirmé]`, répondre dans la langue de la question.
+- `is_identity_mode_ready()` : `True` seulement si un `style_profile` existe **et** au moins `MIN_BELIEFS_FOR_IDENTITY_MODE` croyances sont présentes.
+
+#### Intégration UI
+- **Page Documents** → section **« 🧠 Alimenter mon identité »** : upload TXT/MD, date approximative optionnelle, indexation dans `personal_writing`, analyse du style + extraction des croyances (barres de progression), récapitulatif et aperçu des croyances.
+- **Page Profil** → onglet **« 🧠 Mon identité »** : métriques de style, « votre voix », liste des croyances avec badges de confiance, **résolution des conflits** (boutons « C'est ma vision actuelle »), **toggle du mode second cerveau**.
+- **Page Chat** : indicateur **« 🧠 Mode second cerveau actif »**, et bouton **« ✏️ Ce n'est pas ma façon de dire ça »** sous chaque réponse → zone d'édition → `save_style_correction` (enregistre dans `style_corrections` et recalcule le style).
 
 ---
 
@@ -335,8 +381,12 @@ Module `evaluation/` pour mesurer objectivement la qualité du RAG :
 | `usage_patterns` | **ACPE** — métriques comportementales (JSON) |
 | `progressive_prompts` | **ACPE** — suggestions de profiling progressif (statut, action) |
 | `personal_profile_data` (KMB) | Données « Know Me Better » + complétion |
+| `style_profile` | **Identité** — empreinte stylistique (ligne unique) + fragment de prompt |
+| `belief_store` | **Identité** — croyances (topic, position, confiance, statut, embedding JSON) |
+| `style_corrections` | **Identité** — corrections stylistiques (query, généré, corrigé, diff) |
 
-Base vectorielle : **ChromaDB** (`./data/chroma_db/`) — chunks + embeddings.
+Base vectorielle : **ChromaDB** (`./data/chroma_db/`) — deux collections :
+`cogniassist_documents` (documents) et **`personal_writing`** (écrits personnels — Layer 2).
 Index lexical : **BM25** (`./data/bm25_index.pkl`).
 
 ---
@@ -381,6 +431,11 @@ Variables (via `.env`, gérées par `config.py`) :
 | `HYBRID_SPARSE_WEIGHT` | `0.4` | Poids RRF sparse |
 | `APP_NAME` | `CogniAssist` | Nom de l'application |
 | `DEBUG` | `False` | Mode debug |
+| `PERSONAL_WRITING_COLLECTION` | `personal_writing` | Collection ChromaDB des écrits personnels (Layer 2) |
+| `IDENTITY_MODE_DEFAULT` | `False` | Mode second cerveau actif par défaut |
+| `MIN_BELIEFS_FOR_IDENTITY_MODE` | `3` | Croyances minimales pour activer le mode identité |
+| `BELIEF_CONFLICT_THRESHOLD` | `0.85` | Seuil de similarité pour détecter un conflit de croyances |
+| `BELIEF_TOPIC_SIMILARITY_THRESHOLD` | `0.80` | Seuil de similarité de sujet pour le regroupement des croyances |
 
 ---
 

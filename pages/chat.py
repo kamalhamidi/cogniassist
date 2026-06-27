@@ -29,15 +29,34 @@ def _get_docs(user_id: str) -> list[dict]:
     return get_user_manager(user_id).get_user_documents()
 
 
-def _save_feedback(interaction_id: int, feedback: int) -> None:
-    """Enregistre le feedback utilisateur."""
+def _handle_thumb(interaction_id: int, feedback: int) -> None:
+    """Route le feedback 👍/👎 via le pipeline (historique + boucle de rétroaction)."""
     try:
-        from user import get_interaction_history
-        history = get_interaction_history(st.session_state.get("user_id", "default"))
-        history.save_feedback(interaction_id, feedback)
-        st.toast("Merci pour votre retour ! 👍" if feedback == 1 else "Retour enregistré 👎")
+        pipeline = _get_pipeline()
+        if feedback == 1:
+            pipeline.on_thumbs_up(interaction_id)
+            st.toast("Merci pour votre retour ! 👍")
+        else:
+            pipeline.on_thumbs_down(interaction_id)
+            st.toast("Retour enregistré — j'en tiendrai compte 👎")
     except Exception as e:
         st.error(f"Erreur feedback : {e}")
+
+
+def _fidelity_caption(score) -> None:
+    """Affiche un indicateur discret de fidélité vocale sous une réponse."""
+    if score is None:
+        return
+    try:
+        score = float(score)
+    except (TypeError, ValueError):
+        return
+    if score >= 0.8:
+        st.caption(f"🎯 Très fidèle à votre voix · {score * 100:.0f}%")
+    elif score >= 0.6:
+        st.caption(f"📝 Assez fidèle · {score * 100:.0f}%")
+    else:
+        st.caption(f"⚠️ Moins fidèle — corrigez si besoin · {score * 100:.0f}%")
 
 
 def show_chat_page() -> None:
@@ -146,6 +165,10 @@ def show_chat_page() -> None:
 
                 # Sources et feedback pour les messages assistant
                 if message["role"] == "assistant":
+                    # Indicateur de fidélité vocale (mode identité)
+                    if message.get("identity_mode"):
+                        _fidelity_caption(message.get("fidelity_score"))
+
                     sources = message.get("sources", [])
                     if sources:
                         with st.expander("📚 Sources utilisées"):
@@ -155,15 +178,49 @@ def show_chat_page() -> None:
                                 else:
                                     st.caption(f"📄 {s}")
 
+                    # ─── Transparence : pourquoi cette réponse ? (mode identité) ───
+                    if message.get("identity_mode"):
+                        with st.expander("🔍 Pourquoi cette réponse ?"):
+                            beliefs_used = message.get("beliefs_used", [])
+                            if beliefs_used:
+                                st.markdown("**Croyances mobilisées :**")
+                                conf_fr = {
+                                    "high": "forte", "medium": "modérée",
+                                    "low": "faible",
+                                }
+                                for b in beliefs_used:
+                                    conf = conf_fr.get(b.get("confidence", "medium"), "modérée")
+                                    st.caption(
+                                        f"• **{b.get('topic', '')}** "
+                                        f"({conf}) — {b.get('position', '')}"
+                                    )
+                            else:
+                                st.caption(
+                                    "Aucune position spécifique mobilisée sur ce sujet."
+                                )
+
+                            frag = message.get("style_fragment")
+                            if frag:
+                                st.markdown("**Style appliqué :**")
+                                st.caption(frag)
+
+                            fs = message.get("fidelity_score")
+                            if fs is not None:
+                                st.markdown("**Fidélité vocale :**")
+                                st.caption(
+                                    f"{float(fs) * 100:.0f}% de correspondance "
+                                    "avec votre profil de style."
+                                )
+
                     iid = message.get("interaction_id")
                     if iid and iid > 0:
                         c1, c2, c3 = st.columns([1, 1, 8])
                         with c1:
                             st.button("👍", key=f"up_{idx}_{iid}",
-                                      on_click=_save_feedback, args=(iid, 1))
+                                      on_click=_handle_thumb, args=(iid, 1))
                         with c2:
                             st.button("👎", key=f"down_{idx}_{iid}",
-                                      on_click=_save_feedback, args=(iid, -1))
+                                      on_click=_handle_thumb, args=(iid, -1))
 
                     # ─── Correction stylistique (Layer 2 — Identité) ───
                     prev = (
@@ -184,12 +241,51 @@ def show_chat_page() -> None:
                             "💾 Enregistrer ma version", key=f"savecorr_{idx}",
                         ):
                             try:
-                                pipeline.save_style_correction(
+                                res = pipeline.on_style_correction(
+                                    message.get("interaction_id"),
                                     query_text, message["content"], corrected,
                                 )
-                                st.toast("Merci ! Votre style a été pris en compte. ✍️")
+                                if res.get("recalibrated"):
+                                    st.toast(
+                                        "✨ Style recalibré à partir de vos corrections !"
+                                    )
+                                else:
+                                    st.toast(
+                                        "Merci ! Votre style a été pris en compte. ✍️"
+                                    )
                             except Exception as e:
                                 st.error(f"Erreur : {e}")
+
+        # ─── Ma pensée a évolué (Layer 6 — changement d'avis explicite) ───
+        with st.expander("💭 Ma pensée a évolué sur un sujet"):
+            mc_topic = st.text_input(
+                "Sujet concerné",
+                key="mind_change_topic",
+                placeholder="Ex : le télétravail, les frameworks JS…",
+            )
+            mc_position = st.text_area(
+                "Ma nouvelle position",
+                key="mind_change_position",
+                placeholder="Je ne pense plus que… je pense désormais que…",
+                height=100,
+            )
+            if st.button("Enregistrer ma nouvelle position", key="mind_change_submit"):
+                if mc_topic.strip() and mc_position.strip():
+                    try:
+                        new_id = pipeline.on_explicit_mind_change(
+                            mc_topic.strip(), mc_position.strip(),
+                        )
+                        if new_id and new_id > 0:
+                            st.success(
+                                "Votre nouvelle position a été enregistrée et "
+                                "prendra effet dès la prochaine conversation."
+                            )
+                        else:
+                            st.warning("Enregistrement impossible pour le moment.")
+                    except Exception as e:
+                        st.error(f"Erreur : {e}")
+                else:
+                    st.warning("Renseignez le sujet et votre nouvelle position.")
 
         # ─── Input utilisateur ───
         prompt = st.chat_input("Posez votre question sur vos documents...")
@@ -211,21 +307,44 @@ def show_chat_page() -> None:
                     st.error(full_text)
 
             # Récupérer les métadonnées complètes
-            try:
-                result = pipeline.ask(prompt, user_id=user_id)
-                sources = result.get("sources", [])
-                interaction_id = result.get("interaction_id")
-            except Exception:
-                sources = []
-                interaction_id = None
-
-            # Sauvegarder le message assistant
-            st.session_state.messages.append({
+            assistant_msg = {
                 "role": "assistant",
                 "content": full_text,
-                "sources": sources,
-                "interaction_id": interaction_id,
-            })
+                "sources": [],
+                "interaction_id": None,
+                "identity_mode": False,
+                "fidelity_score": None,
+                "beliefs_used": [],
+                "style_fragment": None,
+            }
+            try:
+                result = pipeline.ask(prompt, user_id=user_id)
+                assistant_msg["sources"] = result.get("sources", [])
+                assistant_msg["interaction_id"] = result.get("interaction_id")
+                assistant_msg["identity_mode"] = result.get("identity_mode", False)
+                assistant_msg["fidelity_score"] = result.get("fidelity_score")
+
+                # Détails de transparence (mode identité uniquement)
+                if result.get("identity_mode"):
+                    try:
+                        assistant_msg["beliefs_used"] = (
+                            pipeline.belief_extractor.get_beliefs_for_topic(prompt)
+                        )
+                    except Exception:
+                        assistant_msg["beliefs_used"] = []
+                    try:
+                        from user.db import get_session
+                        prof = pipeline.style_analyzer.get_profile(get_session())
+                        if prof:
+                            assistant_msg["style_fragment"] = prof.get(
+                                "style_prompt_fragment"
+                            )
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+            st.session_state.messages.append(assistant_msg)
             st.rerun()
 
 

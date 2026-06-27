@@ -358,6 +358,7 @@ Règles strictes:
             if sim <= 0.0:
                 continue
             results.append({
+                "id": b.id,
                 "topic": b.topic,
                 "position": b.position,
                 "confidence": b.confidence,

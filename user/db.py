@@ -81,7 +81,11 @@ def init_db() -> None:
     # Imports locaux pour éviter les imports circulaires (ces modules
     # importent Base depuis ce fichier).
     from user.acpe_models import KnowledgeProfile, UsagePattern, ProgressivePrompt  # noqa: F401
-    from user.identity_models import StyleProfile, BeliefStore, StyleCorrection  # noqa: F401
+    from user.identity_models import (  # noqa: F401
+        StyleProfile, BeliefStore, StyleCorrection,
+        FeedbackSignal, StyleCalibrationLog, BeliefTimeline, IdentityFidelityLog,
+    )
+    from user.history import Interaction  # noqa: F401
 
     Base.metadata.create_all(engine)
 
@@ -118,6 +122,48 @@ def init_db() -> None:
                 logger.info("Colonne 'adaptive_learning_enabled' ajoutée à 'user_profiles'.")
     except Exception as e:
         logger.error("Erreur lors de la migration à la volée du schéma : %s", e)
+
+    # Migration Layer 6 — colonne beliefs_used_json sur interactions
+    try:
+        inspector = inspect(engine)
+        if inspector.has_table("interactions"):
+            inter_cols = [c["name"] for c in inspector.get_columns("interactions")]
+            if "beliefs_used_json" not in inter_cols:
+                with engine.begin() as conn:
+                    conn.execute(
+                        text("ALTER TABLE interactions ADD COLUMN beliefs_used_json TEXT")
+                    )
+                logger.info("Colonne 'beliefs_used_json' ajoutée à 'interactions'.")
+    except Exception:
+        pass  # colonne déjà existante ou table absente — sans gravité
+
+    # Migration Layer 6 — colonne processed sur style_corrections
+    try:
+        inspector = inspect(engine)
+        if inspector.has_table("style_corrections"):
+            corr_cols = [c["name"] for c in inspector.get_columns("style_corrections")]
+            if "processed" not in corr_cols:
+                with engine.begin() as conn:
+                    conn.execute(
+                        text("ALTER TABLE style_corrections ADD COLUMN processed BOOLEAN DEFAULT 0")
+                    )
+                logger.info("Colonne 'processed' ajoutée à 'style_corrections'.")
+    except Exception:
+        pass  # colonne déjà existante ou table absente — sans gravité
+
+    # Migration Layer 6 — colonne reinforcement_count sur style_profile
+    try:
+        inspector = inspect(engine)
+        if inspector.has_table("style_profile"):
+            sp_cols = [c["name"] for c in inspector.get_columns("style_profile")]
+            if "reinforcement_count" not in sp_cols:
+                with engine.begin() as conn:
+                    conn.execute(
+                        text("ALTER TABLE style_profile ADD COLUMN reinforcement_count INTEGER DEFAULT 0")
+                    )
+                logger.info("Colonne 'reinforcement_count' ajoutée à 'style_profile'.")
+    except Exception:
+        pass  # colonne déjà existante ou table absente — sans gravité
 
     logger.info("Base de données initialisée : %s", settings.sqlite_db_path)
 
@@ -188,7 +234,10 @@ def reset_system() -> None:
         from user.profile import UserProfile, UserPreferences, DocumentAccess
         from user.history import Interaction
         from user.acpe_models import KnowledgeProfile, UsagePattern, ProgressivePrompt
-        from user.identity_models import StyleProfile, BeliefStore, StyleCorrection
+        from user.identity_models import (
+            StyleProfile, BeliefStore, StyleCorrection,
+            FeedbackSignal, StyleCalibrationLog, BeliefTimeline, IdentityFidelityLog,
+        )
         
         Base.metadata.drop_all(engine)
         

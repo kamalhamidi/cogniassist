@@ -46,6 +46,94 @@ def _load_acpe_data(user_id: str) -> dict:
         }
 
 
+def _show_learning_section(user_id: str) -> None:
+    """Section « Apprentissage » : KPIs Layer 6, tendance de fidélité, actions."""
+    st.subheader("🔁 Apprentissage")
+
+    try:
+        from rag import get_pipeline
+        pipeline = get_pipeline()
+        summary = pipeline.get_learning_summary()
+    except Exception:
+        st.caption("Données d'apprentissage indisponibles pour le moment.")
+        st.divider()
+        return
+
+    if not summary:
+        st.caption(
+            "L'apprentissage du second cerveau se construira au fil de vos "
+            "corrections et de vos retours."
+        )
+        st.divider()
+        return
+
+    # ── KPIs d'apprentissage ──
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("✍️ Corrections", summary.get("total_corrections", 0))
+    c2.metric("🎛️ Calibrations", summary.get("style_calibrations", 0))
+    c3.metric("✅ Croyances confirmées", summary.get("beliefs_confirmed", 0))
+    c4.metric(
+        "🎯 Fidélité moyenne",
+        f"{summary.get('avg_fidelity_score', 0.0) * 100:.0f}%",
+    )
+
+    # ── Tendance de fidélité (20 dernières) ──
+    try:
+        history = pipeline.feedback_engine.get_fidelity_history(last_n=20)
+    except Exception:
+        history = []
+
+    if history:
+        try:
+            import pandas as pd
+            df = pd.DataFrame(history)
+            df["n"] = range(1, len(df) + 1)
+            st.line_chart(df.set_index("n")["overall_score"], height=200)
+        except Exception:
+            pass
+        trend = summary.get("fidelity_trend", "stable")
+        trend_fr = {
+            "improving": "📈 En amélioration",
+            "stable": "➡️ Stable",
+            "declining": "📉 En baisse",
+        }.get(trend, "➡️ Stable")
+        st.caption(f"Tendance de la fidélité vocale : **{trend_fr}**")
+
+    # ── Carte d'actions en attente ──
+    pending_conflicts = summary.get("pending_conflicts", 0)
+    if pending_conflicts > 0:
+        st.warning(
+            f"⚠️ {pending_conflicts} conflit(s) de croyances à résoudre "
+            "dans votre profil identité."
+        )
+        if st.button("Résoudre maintenant", key="dash_resolve_conflicts"):
+            st.session_state.current_page = "👤 Profil"
+            st.rerun()
+
+    # ── Proposition de recalibration ──
+    try:
+        from user.db import get_session
+        from user.identity_models import StyleCorrection
+        pending_corr = (
+            get_session().query(StyleCorrection)
+            .filter_by(processed=False).count()
+        )
+        from config import settings
+        if pending_corr >= settings.STYLE_RECALIBRATION_THRESHOLD:
+            st.info(
+                "📝 Vous avez fait suffisamment de corrections pour recalibrer "
+                "votre style. Voulez-vous mettre à jour votre profil ?"
+            )
+            if st.button("Recalibrer maintenant", key="dash_recalibrate"):
+                pipeline.recalibrate_style("manual")
+                st.success("✨ Profil de style recalibré !")
+                st.rerun()
+    except Exception:
+        pass
+
+    st.divider()
+
+
 def show_dashboard_page() -> None:
     """Affiche le tableau de bord."""
     user_id = st.session_state.get("user_id", "default")
@@ -233,6 +321,9 @@ def show_dashboard_page() -> None:
         st.info("Aucune interaction enregistrée. Commencez à chatter !")
 
     st.divider()
+
+    # ═══ Section 6.5 : Apprentissage (Layer 6 — boucle de rétroaction) ═══
+    _show_learning_section(user_id)
 
     # ═══ Section 7 : Recommandations ═══
     st.subheader("💡 Recommandations")

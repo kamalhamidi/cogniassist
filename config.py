@@ -63,6 +63,20 @@ class Settings(BaseSettings):
     BELIEF_CONFLICT_THRESHOLD: float = 0.85  # similarité cosinus
     BELIEF_TOPIC_SIMILARITY_THRESHOLD: float = 0.80
 
+    # === Feedback Loop (Layer 6 — Brain self-improvement) ===
+    # Déclenche un recalcul du style après ce nombre de corrections non traitées
+    STYLE_RECALIBRATION_THRESHOLD: int = 5
+    # Vérifie la dérive stylistique tous les N interactions
+    DRIFT_DETECTION_INTERVAL: int = 20
+    # Recalibre si le score de dérive dépasse ce seuil (0.0–1.0)
+    DRIFT_THRESHOLD: float = 0.25
+    # Nombre de réponses récentes pour la moyenne de fidélité
+    FIDELITY_SCORE_WINDOW: int = 30
+    # Nombre de 👎 sur une croyance avant qu'elle devienne 'conflicted'
+    BELIEF_CONFIDENCE_DECAY_STEPS: int = 3
+    # Les 👍 augmentent-ils la confiance des croyances utilisées
+    THUMBS_CONFIDENCE_BOOST: bool = True
+
     # === Application ===
     APP_NAME: str = "CogniAssist"
     DEBUG: bool = False

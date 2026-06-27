@@ -52,6 +52,8 @@ class Interaction(Base):
     chunks_used = Column(Integer, default=0)
     response_time_ms = Column(Integer, default=0)
     feedback = Column(Integer, nullable=True)
+    # Layer 6 — ids des croyances injectées dans cette réponse (mode identité)
+    beliefs_used_json = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 

@@ -466,39 +466,51 @@ def _show_identity_tab(user_id: str) -> None:
 
     conf_colors = {"high": "success", "medium": "primary", "low": "muted"}
 
-    # Conflits d'abord (à résoudre)
+    # Conflits d'abord (à résoudre) — carte claire à deux versions
     if conflicts:
-        # Regrouper les conflits par paires (même topic le plus proche)
         st.markdown("#### ⚠️ Conflits à résoudre")
-        # On présente chaque croyance conflictuelle avec un bouton de confirmation
-        for b in conflicts:
-            with st.container(border=True):
-                st.warning(
-                    f"**{b['topic']}** — {b['position']}\n\n"
-                    f"_Confiance : {b['confidence']}_"
-                )
-                # Trouver les autres croyances conflictuelles sur un sujet proche
-                others = [
-                    o for o in conflicts
-                    if o["id"] != b["id"]
-                ]
-                col_a, col_b = st.columns(2)
-                with col_a:
-                    if st.button(
-                        "C'est ma vision actuelle",
-                        key=f"keep_{b['id']}",
-                        use_container_width=True,
-                    ):
-                        # Marquer celle-ci confirmée et les autres conflits supersédées
-                        for o in others:
-                            pipeline.belief_extractor.resolve_conflict(b["id"], o["id"])
-                        if not others:
-                            pipeline.belief_extractor.resolve_conflict(b["id"], b["id"])
-                        st.rerun()
-                with col_b:
-                    st.caption(f"Statut : {b['status']}")
 
-    # Croyances actives
+        # Regrouper les croyances conflictuelles par sujet
+        by_topic: dict[str, list] = {}
+        for b in conflicts:
+            by_topic.setdefault(b["topic"], []).append(b)
+
+        for topic, group in by_topic.items():
+            with st.container(border=True):
+                st.markdown(f"**⚠️ Conflit détecté : {topic}**")
+                # Trier par date pour présenter « Version A / Version B »
+                group_sorted = sorted(group, key=lambda x: x.get("created_at", ""))
+                for i, b in enumerate(group_sorted):
+                    label = chr(ord("A") + i)
+                    date_str = (b.get("created_at") or "")[:10]
+                    st.markdown(
+                        f"**Version {label}**"
+                        + (f" ({date_str})" if date_str else "")
+                    )
+                    st.caption(b["position"])
+                    col_keep, col_drop = st.columns(2)
+                    with col_keep:
+                        if st.button(
+                            "✓ C'est ce que je pense",
+                            key=f"conf_keep_{b['id']}",
+                            use_container_width=True,
+                        ):
+                            pipeline.on_belief_confirmed(b["id"])
+                            # Archiver les autres versions du même sujet
+                            for other in group_sorted:
+                                if other["id"] != b["id"]:
+                                    pipeline.on_belief_rejected(other["id"])
+                            st.rerun()
+                    with col_drop:
+                        if st.button(
+                            "✗ Archiver",
+                            key=f"conf_drop_{b['id']}",
+                            use_container_width=True,
+                        ):
+                            pipeline.on_belief_rejected(b["id"])
+                            st.rerun()
+
+    # Croyances actives — éditables
     if active:
         from ui import stat_badge
         st.markdown("#### Mes croyances actives")
@@ -506,13 +518,158 @@ def _show_identity_tab(user_id: str) -> None:
             badge = stat_badge(
                 b["confidence"], conf_colors.get(b["confidence"], "primary"),
             )
-            st.html(
-                f"<div style='margin-bottom:8px'>"
-                f"<b>{b['topic']}</b> {badge}<br>"
-                f"<span style='color:#6B6880'>{b['position']}</span></div>"
-            )
+            col_txt, col_edit = st.columns([9, 1])
+            with col_txt:
+                st.html(
+                    f"<div style='margin-bottom:2px'>"
+                    f"<b>{b['topic']}</b> {badge}<br>"
+                    f"<span style='color:#6B6880'>{b['position']}</span></div>"
+                )
+            with col_edit:
+                edit_key = f"editing_belief_{b['id']}"
+                if st.button("✏️", key=f"editbtn_{b['id']}", help="Modifier"):
+                    st.session_state[edit_key] = not st.session_state.get(edit_key, False)
+                    st.rerun()
+
+            if st.session_state.get(f"editing_belief_{b['id']}", False):
+                with st.container(border=True):
+                    new_pos = st.text_area(
+                        "Ma position",
+                        value=b["position"],
+                        key=f"editpos_{b['id']}",
+                        height=100,
+                    )
+                    new_conf = st.select_slider(
+                        "Niveau de conviction",
+                        options=["low", "medium", "high"],
+                        value=b["confidence"] if b["confidence"] in ("low", "medium", "high") else "medium",
+                        format_func=lambda x: {"low": "Faible", "medium": "Modérée", "high": "Forte"}[x],
+                        key=f"editconf_{b['id']}",
+                    )
+                    c_save, c_cancel = st.columns(2)
+                    with c_save:
+                        if st.button(
+                            "💾 Enregistrer", key=f"savebelief_{b['id']}",
+                            use_container_width=True,
+                        ):
+                            pipeline.on_belief_updated(b["id"], new_pos, new_conf)
+                            st.session_state[f"editing_belief_{b['id']}"] = False
+                            st.toast("Croyance mise à jour ✍️")
+                            st.rerun()
+                    with c_cancel:
+                        if st.button(
+                            "Annuler", key=f"cancelbelief_{b['id']}",
+                            use_container_width=True,
+                        ):
+                            st.session_state[f"editing_belief_{b['id']}"] = False
+                            st.rerun()
     elif not conflicts:
         st.caption("Aucune croyance extraite pour le moment.")
+
+    st.divider()
+
+    # ── Section D : Historique d'évolution ──
+    st.subheader("🔄 Historique d'évolution")
+    st.caption("Comment votre pensée a évolué")
+    try:
+        timeline = pipeline.feedback_engine.get_belief_timeline()
+    except Exception:
+        timeline = []
+
+    if timeline:
+        # Regrouper par sujet
+        tl_by_topic: dict[str, list] = {}
+        for entry in timeline:
+            tl_by_topic.setdefault(entry["topic"], []).append(entry)
+
+        for topic, entries in tl_by_topic.items():
+            with st.expander(f"📌 {topic} ({len(entries)} changement(s))"):
+                for e in entries:
+                    date_str = (e.get("created_at") or "")[:10]
+                    reason_fr = {
+                        "user_correction": "correction",
+                        "conflict_resolved": "conflit résolu",
+                        "thumbs_feedback": "retour 👎",
+                        "explicit_update": "changement d'avis",
+                    }.get(e.get("change_reason"), e.get("change_reason", ""))
+                    if e.get("old_position"):
+                        st.markdown(
+                            f"_{date_str}_ · **{reason_fr}**  \n"
+                            f"❌ {e['old_position']}  \n"
+                            f"✅ {e.get('new_position') or '(archivée)'}"
+                        )
+                    else:
+                        st.markdown(
+                            f"_{date_str}_ · **{reason_fr}**  \n"
+                            f"✅ {e.get('new_position') or ''}"
+                        )
+                    st.divider()
+    else:
+        st.caption(
+            "Vos évolutions de pensée apparaîtront ici au fil de vos corrections."
+        )
+
+    st.divider()
+
+    # ── Section E : Fidélité vocale ──
+    st.subheader("📈 Fidélité vocale")
+    try:
+        history = pipeline.feedback_engine.get_fidelity_history(
+            last_n=30,
+        )
+    except Exception:
+        history = []
+
+    if history:
+        try:
+            import pandas as pd
+            import plotly.graph_objects as go
+
+            df = pd.DataFrame(history)
+            df["index"] = range(1, len(df) + 1)
+
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=df["index"],
+                y=df["overall_score"],
+                mode="lines+markers",
+                line=dict(color="#6C5CE7", width=3),
+                marker=dict(size=6),
+                name="Fidélité",
+            ))
+            fig.update_layout(
+                yaxis=dict(range=[0, 1], title="Score"),
+                xaxis=dict(title="Réponses (récentes →)"),
+                margin=dict(l=40, r=20, t=20, b=40),
+                height=300,
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        except Exception:
+            import pandas as pd
+            df = pd.DataFrame(history)
+            st.line_chart(df.set_index("index")["overall_score"] if "index" in df else df["overall_score"])
+
+        try:
+            summary = pipeline.get_learning_summary()
+            trend = summary.get("fidelity_trend", "stable")
+            trend_fr = {
+                "improving": "📈 En amélioration",
+                "stable": "➡️ Stable",
+                "declining": "📉 En baisse",
+            }.get(trend, "➡️ Stable")
+            st.caption(f"Tendance : **{trend_fr}**")
+        except Exception:
+            pass
+
+        st.caption(
+            "Cette courbe mesure à quel point CogniAssist répond dans votre "
+            "voix. Elle s'améliore à chaque correction que vous faites."
+        )
+    else:
+        st.caption(
+            "Le score de fidélité apparaîtra après vos premières réponses "
+            "en mode second cerveau."
+        )
 
     st.divider()
 

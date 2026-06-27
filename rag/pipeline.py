@@ -88,6 +88,24 @@ class RAGPipeline:
 
         self.identity_mode_enabled: bool = settings.IDENTITY_MODE_DEFAULT
 
+        # ── Layer 6 — Boucle de rétroaction (second cerveau auto-apprenant) ──
+        self.interaction_counter = 0  # déclencheur de détection de dérive
+        try:
+            from user.feedback_engine import FeedbackEngine
+            from user.knowledge_engine import KnowledgeProfileEngine
+            from user.db import get_session
+
+            self.feedback_engine = FeedbackEngine(
+                session=get_session(),
+                style_analyzer=self.style_analyzer,
+                belief_extractor=self.belief_extractor,
+                knowledge_engine=KnowledgeProfileEngine("default"),
+                embedder=self._vector_store.embedding_manager,
+            )
+        except Exception as e:
+            logger.error("Initialisation de la boucle de rétroaction échouée : %s", e)
+            self.feedback_engine = None
+
         # Vérifier la disponibilité
         self.is_ready: bool = False
         self._check_readiness()
@@ -194,6 +212,119 @@ class RAGPipeline:
         except Exception as e:
             logger.debug("Recalcul du style après correction échoué : %s", e)
 
+    # ── Layer 6 — Méthodes publiques de la boucle de rétroaction ──
+
+    def on_style_correction(
+        self, interaction_id, query: str, generated: str, corrected: str,
+    ) -> dict:
+        """Route une correction stylistique vers la boucle de rétroaction."""
+        if self.feedback_engine is None:
+            self.save_style_correction(query, generated, corrected)
+            return {"status": "saved", "recalibrated": False, "diff_summary": ""}
+        return self.feedback_engine.on_style_correction(
+            interaction_id, query, generated, corrected,
+        )
+
+    def on_thumbs_up(self, interaction_id) -> None:
+        """👍 — enregistre le feedback historique puis renforce l'identité."""
+        try:
+            from user import get_interaction_history
+            get_interaction_history("default").save_feedback(interaction_id, 1)
+        except Exception as e:
+            logger.debug("save_feedback(👍) échoué : %s", e)
+        if self.feedback_engine is not None:
+            self.feedback_engine.on_thumbs_up(interaction_id)
+
+    def on_thumbs_down(self, interaction_id, reason: str | None = None) -> None:
+        """👎 — enregistre le feedback historique puis atténue l'identité."""
+        try:
+            from user import get_interaction_history
+            get_interaction_history("default").save_feedback(interaction_id, -1)
+        except Exception as e:
+            logger.debug("save_feedback(👎) échoué : %s", e)
+        if self.feedback_engine is not None:
+            self.feedback_engine.on_thumbs_down(interaction_id, reason)
+
+    def on_belief_confirmed(self, belief_id: int) -> None:
+        """Confirme une croyance via la boucle de rétroaction."""
+        if self.feedback_engine is not None:
+            self.feedback_engine.on_belief_confirmed(belief_id)
+
+    def on_belief_rejected(self, belief_id: int, replacement: str | None = None) -> None:
+        """Rejette une croyance via la boucle de rétroaction."""
+        if self.feedback_engine is not None:
+            self.feedback_engine.on_belief_rejected(belief_id, replacement)
+
+    def on_belief_updated(
+        self, belief_id: int, new_position: str, new_confidence: str = "medium",
+    ) -> None:
+        """Édite une croyance via la boucle de rétroaction."""
+        if self.feedback_engine is not None:
+            self.feedback_engine.on_belief_updated(
+                belief_id, new_position, new_confidence,
+            )
+
+    def on_explicit_mind_change(self, topic: str, new_position: str) -> int:
+        """Enregistre un changement d'avis explicite. Retourne le nouvel id."""
+        if self.feedback_engine is None:
+            return -1
+        return self.feedback_engine.on_explicit_mind_change(topic, new_position)
+
+    def get_learning_summary(self) -> dict:
+        """Résumé de l'apprentissage (Layer 6) pour le dashboard."""
+        if self.feedback_engine is None:
+            return {}
+        return self.feedback_engine.get_learning_summary()
+
+    def recalibrate_style(self, trigger_reason: str = "manual") -> None:
+        """Déclenche manuellement un recalcul du profil de style."""
+        if self.feedback_engine is not None:
+            self.feedback_engine._recalibrate_style(trigger_reason)
+
+    def _store_beliefs_used(self, interaction_id, question: str) -> list[int]:
+        """Mémorise les croyances injectées dans une réponse identité (non-bloquant)."""
+        belief_ids: list[int] = []
+        try:
+            if self.belief_extractor is None or not interaction_id or interaction_id < 0:
+                return belief_ids
+            beliefs = self.belief_extractor.get_beliefs_for_topic(question)
+            belief_ids = [b["id"] for b in beliefs if b.get("id")]
+
+            import json
+            from user.db import get_session
+            from user.history import Interaction
+            session = get_session()
+            inter = session.query(Interaction).filter_by(id=interaction_id).first()
+            if inter is not None:
+                inter.beliefs_used_json = json.dumps(belief_ids)
+                session.commit()
+        except Exception as e:
+            logger.debug("_store_beliefs_used échoué : %s", e)
+        return belief_ids
+
+    def _post_identity_processing(
+        self, interaction_id, question: str, answer: str,
+    ) -> Optional[float]:
+        """
+        Traitement post-réponse en mode identité (non-bloquant) :
+        mémorise les croyances utilisées, calcule le score de fidélité,
+        et déclenche la détection de dérive tous les N interactions.
+        """
+        if self.feedback_engine is None or not self._use_identity_mode():
+            return None
+        fidelity = None
+        try:
+            self._store_beliefs_used(interaction_id, question)
+            fidelity = self.feedback_engine.score_response_fidelity(
+                interaction_id, answer,
+            )
+            self.interaction_counter += 1
+            if (self.interaction_counter % settings.DRIFT_DETECTION_INTERVAL) == 0:
+                self.feedback_engine.check_for_drift()
+        except Exception as e:
+            logger.debug("_post_identity_processing échoué : %s", e)
+        return fidelity
+
     def ask(
         self,
         question: str,
@@ -296,6 +427,11 @@ class RAGPipeline:
         except Exception as e:
             logger.debug("ACPE evolution (non-bloquant) : %s", e)
 
+        # 7.6 — Traitement identité (Layer 6, non-bloquant) après la réponse
+        fidelity_score = self._post_identity_processing(
+            interaction_id, question, answer,
+        )
+
         # 8. Construire les sources
         sources = [
             {
@@ -315,6 +451,8 @@ class RAGPipeline:
             "model_used": settings.ollama_model,
             "context_length": len(context),
             "interaction_id": interaction_id,
+            "fidelity_score": fidelity_score,
+            "identity_mode": self._use_identity_mode(),
         }
 
     def ask_stream(
@@ -382,10 +520,11 @@ class RAGPipeline:
         self.memory.add_assistant_message(full_answer)
 
         # Sauvegarder l'interaction dans l'historique
+        stream_interaction_id = None
         try:
             from user import get_interaction_history
             history = get_interaction_history(user_id)
-            history.save_interaction(
+            stream_interaction_id = history.save_interaction(
                 question=question,
                 answer=full_answer,
                 sources=[],
@@ -393,6 +532,14 @@ class RAGPipeline:
             )
         except Exception:
             pass
+
+        # Traitement identité (Layer 6, non-bloquant) après le streaming
+        try:
+            self._post_identity_processing(
+                stream_interaction_id, question, full_answer,
+            )
+        except Exception as e:
+            logger.debug("post-traitement identité (stream) échoué : %s", e)
 
         # Évolution du profil ACPE (non-bloquant)
         try:
