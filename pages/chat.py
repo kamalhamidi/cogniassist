@@ -190,9 +190,18 @@ def show_chat_page() -> None:
                                 }
                                 for b in beliefs_used:
                                     conf = conf_fr.get(b.get("confidence", "medium"), "modérée")
+                                    date_w = b.get("date_written")
+                                    meta = f"conviction {conf}"
+                                    if date_w:
+                                        meta += f" · écrit le {date_w}"
                                     st.caption(
-                                        f"• **{b.get('topic', '')}** "
-                                        f"({conf}) — {b.get('position', '')}"
+                                        f"• **{b.get('topic', '')}** — "
+                                        f"{b.get('position', '')}"
+                                    )
+                                    st.caption(
+                                        f"<span style='font-size:0.75rem;color:#9690b0'>"
+                                        f"&nbsp;&nbsp;&nbsp;{meta}</span>",
+                                        unsafe_allow_html=True,
                                     )
                             else:
                                 st.caption(
