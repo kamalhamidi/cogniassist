@@ -151,11 +151,43 @@ def show_chat_page() -> None:
             st.code("ollama run mistral:7b", language="bash")
             st.stop()
 
-        # Bouton effacer
-        if st.button("🗑️ Effacer la conversation", key="clear_chat"):
-            st.session_state.messages = []
-            pipeline.clear_memory()
-            st.rerun()
+        # Bouton effacer (uniquement si une conversation existe)
+        if st.session_state.messages:
+            col_sp, col_clear = st.columns([7, 3])
+            with col_clear:
+                if st.button(
+                    "🗑️ Effacer la conversation",
+                    key="clear_chat",
+                    use_container_width=True,
+                ):
+                    st.session_state.messages = []
+                    pipeline.clear_memory()
+                    st.rerun()
+        else:
+            # ─── Écran d'accueil quand aucune conversation ───
+            from ui import empty_state
+            empty_state(
+                "💬",
+                "Démarrez une conversation",
+                "Posez une question sur vos documents personnels. CogniAssist "
+                "retrouve les passages pertinents et répond dans votre contexte.",
+            )
+            try:
+                welcome_sugs = _get_suggestions(user_id)
+            except Exception:
+                welcome_sugs = []
+            if welcome_sugs:
+                st.caption("✨ Pour commencer, essayez :")
+                for i, sug in enumerate(welcome_sugs[:3]):
+                    if st.button(
+                        f"💡 {sug}",
+                        key=f"welcome_sug_{i}",
+                        use_container_width=True,
+                    ):
+                        st.session_state.messages.append(
+                            {"role": "user", "content": sug}
+                        )
+                        st.rerun()
 
         # Afficher l'historique
         for idx, message in enumerate(st.session_state.messages):

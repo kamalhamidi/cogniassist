@@ -69,25 +69,49 @@ def main() -> None:
         st.divider()
 
         # Statut du pipeline
+        from ui import status_pill
         try:
             pipeline = _get_cached_pipeline()
             if pipeline.is_ready:
-                st.success("✅ Mistral:7b prêt")
+                status_pill("Mistral:7b prêt", "success")
                 st.session_state.pipeline_ready = True
             else:
-                st.error("❌ Ollama non démarré")
+                status_pill("Ollama non démarré", "danger")
                 st.session_state.pipeline_ready = False
 
             status = pipeline.get_pipeline_status()
-            st.caption(f"🤖 Modèle : {status['llm_model']}")
-            st.caption(f"📚 Documents indexés : {status['total_documents_indexed']}")
+            st.html(
+                f"""
+                <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;
+                                background:rgba(108,92,231,.06);border-radius:10px;
+                                padding:7px 12px;font-size:.82rem;">
+                        <span style="color:#6B6880;">🤖 Modèle</span>
+                        <span style="color:#1E1B2E;font-weight:700;">{status['llm_model']}</span>
+                    </div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;
+                                background:rgba(108,92,231,.06);border-radius:10px;
+                                padding:7px 12px;font-size:.82rem;">
+                        <span style="color:#6B6880;">📚 Documents indexés</span>
+                        <span style="color:#1E1B2E;font-weight:700;">{status['total_documents_indexed']}</span>
+                    </div>
+                </div>
+                """
+            )
         except Exception:
-            st.error("❌ Pipeline indisponible")
+            status_pill("Pipeline indisponible", "danger")
             st.session_state.pipeline_ready = False
 
         st.divider()
-        st.caption("Master SID 2025–2026")
-        st.caption("HAMIDI Kamal")
+        st.html(
+            """
+            <div style="font-size:.78rem;color:#9690b0;line-height:1.5;">
+                <div style="font-weight:700;color:#6B6880;">CogniAssist</div>
+                <div>Master SID 2025–2026</div>
+                <div>HAMIDI Kamal</div>
+            </div>
+            """
+        )
 
     # ═══ Onboarding Gate ═══
     try:

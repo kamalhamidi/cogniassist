@@ -157,11 +157,33 @@ def show_dashboard_page() -> None:
     profile = data["profile"]
 
     # ═══ Section 1 : KPIs ═══
+    from ui import metric_card
+    sat_rate = progress["positive_feedback_rate"]
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("📚 Documents", progress["documents_uploaded"])
-    c2.metric("💬 Questions posées", stats["total_interactions"])
-    c3.metric("⭐ Score de connaissance", f"{progress['knowledge_score']}/100")
-    c4.metric("👍 Taux de satisfaction", f"{progress['positive_feedback_rate']:.0f}%")
+    with c1:
+        metric_card("Documents", progress["documents_uploaded"], icon="📚")
+    with c2:
+        metric_card("Questions posées", stats["total_interactions"], icon="💬")
+    with c3:
+        metric_card(
+            "Score de connaissance",
+            f"{progress['knowledge_score']}/100",
+            icon="⭐",
+        )
+    with c4:
+        metric_card(
+            "Taux de satisfaction",
+            f"{sat_rate:.0f}%",
+            icon="👍",
+            delta=(
+                "Excellent" if sat_rate >= 75
+                else "À améliorer" if sat_rate < 50 else "Correct"
+            ),
+            delta_kind=(
+                "success" if sat_rate >= 75
+                else "danger" if sat_rate < 50 else "warning"
+            ),
+        )
 
     st.divider()
 

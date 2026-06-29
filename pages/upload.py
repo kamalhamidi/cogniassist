@@ -113,13 +113,31 @@ def show_upload_page() -> None:
             docs = []
 
         if not docs:
-            st.info("📭 Aucun document importé. Utilisez l'onglet Importer.")
+            from ui import empty_state
+            empty_state(
+                "📭",
+                "Votre bibliothèque est vide",
+                "Importez vos premiers fichiers depuis l'onglet « Importer » "
+                "pour commencer à interroger vos documents.",
+            )
         else:
             # Métriques résumées
+            from ui import metric_card
             c1, c2, c3 = st.columns(3)
-            c1.metric("Documents", len(docs))
-            c2.metric("Total chunks", sum(d["chunk_count"] for d in docs))
-            c3.metric("Avec résumé", sum(1 for d in docs if d["has_summary"]))
+            with c1:
+                metric_card("Documents", len(docs), icon="📄")
+            with c2:
+                metric_card(
+                    "Total chunks",
+                    sum(d["chunk_count"] for d in docs),
+                    icon="🧩",
+                )
+            with c3:
+                metric_card(
+                    "Avec résumé",
+                    sum(1 for d in docs if d["has_summary"]),
+                    icon="📝",
+                )
 
             st.divider()
 
