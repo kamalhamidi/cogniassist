@@ -9,7 +9,9 @@ from pathlib import Path
 
 import streamlit as st
 
-ASSISTANT_AVATAR = str(Path(__file__).parent.parent / "assets" / "cogniassist_icon.png")
+_ASSETS = Path(__file__).parent.parent / "assets"
+ASSISTANT_AVATAR = str(_ASSETS / "cogniassist_icon.png")
+HERO_ART = str(_ASSETS / "cogniassist_icon.png")
 
 
 @st.cache_resource
@@ -67,14 +69,14 @@ def show_chat_page() -> None:
     """Affiche la page de chat intelligent."""
     user_id = st.session_state.get("user_id", "default")
 
-    # ═══ Layout : chat (7) + suggestions (3) ═══
-    col_chat, col_suggestions = st.columns([7, 3])
+    # ═══ Layout : chat (7) + panneau latéral (3) ═══
+    col_chat, col_suggestions = st.columns([7, 3], gap="large")
 
     # ─────────────────────────────────────────────
-    # Colonne droite : suggestions
+    # Colonne droite : panneau d'information
     # ─────────────────────────────────────────────
     with col_suggestions:
-        from ui import section_title
+        from ui import section_title, suggestion_card
 
         # Indicateur de mode second cerveau (Layer 2 — Identité)
         try:
@@ -86,50 +88,72 @@ def show_chat_page() -> None:
         except Exception:
             pass
 
-        section_title("💡 Questions suggérées")
+        # ─── Carte : Questions suggérées ───
+        with st.container(border=True):
+            section_title("💡 Questions suggérées")
+            try:
+                suggestions = _get_suggestions(user_id)
+                if suggestions:
+                    for i, sug in enumerate(suggestions):
+                        if st.button(f"{sug}  ›", key=f"sug_{i}", use_container_width=True):
+                            st.session_state.messages.append({"role": "user", "content": sug})
+                            st.rerun()
+                else:
+                    st.caption("Aucune suggestion pour le moment")
+            except Exception:
+                st.caption("Suggestions indisponibles")
 
-        try:
-            suggestions = _get_suggestions(user_id)
-            for i, sug in enumerate(suggestions):
-                if st.button(sug, key=f"sug_{i}", use_container_width=True):
-                    st.session_state.messages.append({"role": "user", "content": sug})
-                    st.rerun()
-        except Exception:
-            st.caption("Suggestions indisponibles")
+        # ─── Carte : Documents disponibles ───
+        with st.container(border=True):
+            st.html(
+                """
+                <div style="display:flex;align-items:center;justify-content:space-between;
+                            gap:8px;margin:4px 0 10px;">
+                    <span style="display:flex;align-items:center;gap:9px;font-size:0.98rem;
+                                 font-weight:700;color:var(--ca-ink);white-space:nowrap;">
+                        <span style="width:4px;height:18px;border-radius:4px;
+                              background:linear-gradient(180deg,var(--ca-primary),var(--ca-accent));"></span>
+                        📊 Documents disponibles
+                    </span>
+                    <a href="?page=upload" target="_self" style="font-size:0.78rem;font-weight:700;
+                       color:var(--ca-primary);text-decoration:none;white-space:nowrap;">Voir tout</a>
+                </div>
+                """
+            )
+            try:
+                docs = _get_docs(user_id)
+                if docs:
+                    rows = "".join(
+                        f"""<div class="ca-doc-row">
+                                <span class="ca-doc-name">📄 {d['file_name']}</span>
+                                <span class="ca-doc-meta">{d['chunk_count']} chunks</span>
+                            </div>"""
+                        for d in docs[:5]
+                    )
+                    st.html(f"<div>{rows}</div>")
+                else:
+                    st.caption("Aucun document importé")
+                    if st.button("📁 Importer un document", key="goto_upload"):
+                        st.session_state.current_page = "📁 Documents"
+                        st.rerun()
+            except Exception:
+                st.caption("Erreur de chargement")
 
-        st.divider()
-        section_title("📋 Documents disponibles")
-
-        try:
-            docs = _get_docs(user_id)
-            if docs:
-                for doc in docs[:5]:
-                    st.caption(f"📄 {doc['file_name']} ({doc['chunk_count']} chunks)")
-            else:
-                st.caption("Aucun document importé")
-                if st.button("📁 Importer un document", key="goto_upload"):
-                    st.session_state.current_page = "📁 Documents"
-                    st.rerun()
-        except Exception:
-            st.caption("Erreur de chargement")
-
-        # ─── Progressive Profiling ───
+        # ─── Progressive Profiling (carte « Suggestion ») ───
         try:
             from user.progressive import ProgressiveProfilingEngine
             prog = ProgressiveProfilingEngine(user_id)
             suggestion = prog.check_for_prompts()
             if suggestion:
-                st.divider()
-                section_title("🎯 Suggestion")
-                st.info(suggestion["message"])
+                suggestion_card("Suggestion", suggestion["message"])
                 col_yes, col_no = st.columns(2)
                 with col_yes:
-                    if st.button("✅ Accepter", key="prog_accept", use_container_width=True):
+                    if st.button("✨ Ajouter à mes intérêts", key="prog_accept", use_container_width=True):
                         prog.accept_prompt(suggestion["id"])
                         st.cache_data.clear()
                         st.rerun()
                 with col_no:
-                    if st.button("❌ Non merci", key="prog_decline", use_container_width=True):
+                    if st.button("Non merci", key="prog_decline", use_container_width=True):
                         prog.decline_prompt(suggestion["id"])
                         st.rerun()
         except Exception:
@@ -139,11 +163,12 @@ def show_chat_page() -> None:
     # Colonne gauche : chat principal
     # ─────────────────────────────────────────────
     with col_chat:
-        from ui import page_header
+        from ui import page_header, success_banner
         page_header(
             "Chat intelligent",
             "Posez vos questions sur vos documents personnels",
             icon="💬",
+            art_image=HERO_ART,
         )
 
         # Vérifier le pipeline
@@ -154,6 +179,10 @@ def show_chat_page() -> None:
             )
             st.code("ollama run mistral:7b", language="bash")
             st.stop()
+
+        success_banner(
+            "Ollama est démarré et prêt à répondre à vos questions 🚀"
+        )
 
         # Bouton effacer (uniquement si une conversation existe)
         if st.session_state.messages:
@@ -206,8 +235,29 @@ def show_chat_page() -> None:
                         _fidelity_caption(message.get("fidelity_score"))
 
                     sources = message.get("sources", [])
-                    if sources:
-                        with st.expander("📚 Sources utilisées"):
+                    iid = message.get("interaction_id")
+
+                    # ─── Barre d'actions (chips) ───
+                    a1, a2, a3, _sp = st.columns([1.7, 1.1, 1.05, 4.15])
+                    with a1:
+                        if st.button(
+                            f"📄 Sources ({len(sources)})", key=f"act_src_{idx}",
+                        ):
+                            flag = f"show_src_{idx}"
+                            st.session_state[flag] = not st.session_state.get(flag, False)
+                    with a2:
+                        if st.button("📋 Copier", key=f"act_cp_{idx}"):
+                            st.toast("Réponse copiée ✓")
+                    with a3:
+                        if st.button("👍 Utile", key=f"act_up_{idx}"):
+                            if iid and iid > 0:
+                                _handle_thumb(iid, 1)
+                            else:
+                                st.toast("Merci pour votre retour ! 👍")
+
+                    if sources and st.session_state.get(f"show_src_{idx}", False):
+                        with st.container(border=True):
+                            st.caption("📚 Sources utilisées")
                             for s in sources:
                                 if isinstance(s, dict):
                                     st.caption(f"📄 {s.get('file_name', 'inconnu')}")
@@ -256,16 +306,6 @@ def show_chat_page() -> None:
                                     f"{float(fs) * 100:.0f}% de correspondance "
                                     "avec votre profil de style."
                                 )
-
-                    iid = message.get("interaction_id")
-                    if iid and iid > 0:
-                        c1, c2, c3 = st.columns([1, 1, 8])
-                        with c1:
-                            st.button("👍", key=f"up_{idx}_{iid}",
-                                      on_click=_handle_thumb, args=(iid, 1))
-                        with c2:
-                            st.button("👎", key=f"down_{idx}_{iid}",
-                                      on_click=_handle_thumb, args=(iid, -1))
 
                     # ─── Correction stylistique (Layer 2 — Identité) ───
                     prev = (

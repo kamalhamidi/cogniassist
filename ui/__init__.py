@@ -12,11 +12,15 @@ from ui.theme import (
     chip,
     chips,
     empty_state,
+    get_theme_mode,
+    img_data_uri,
     metric_card,
     page_header,
     section_title,
     stat_badge,
     status_pill,
+    success_banner,
+    suggestion_card,
 )
 
 __all__ = [
@@ -25,9 +29,13 @@ __all__ = [
     "chip",
     "chips",
     "empty_state",
+    "get_theme_mode",
+    "img_data_uri",
     "metric_card",
     "page_header",
     "section_title",
     "stat_badge",
     "status_pill",
+    "success_banner",
+    "suggestion_card",
 ]

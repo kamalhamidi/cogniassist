@@ -2,22 +2,28 @@
 ui/theme.py — Thème global et composants d'interface de CogniAssist.
 
 Fournit :
-- `apply_theme()`    : injecte le CSS global (typographie, couleurs, cartes,
-                       boutons, sidebar, chat, onglets, animations, etc.).
-- `page_header()`    : en-tête « héro » dégradé réutilisable en haut de page.
-- `section_title()`  : titre de section stylisé avec icône.
-- `stat_badge()`     : petit badge/pilule coloré pour les statuts.
-- `chip()`           : pastille discrète (tag) à passer à st.html.
-- `empty_state()`    : état vide illustré (icône + titre + texte).
-- `metric_card()`    : carte KPI riche (icône + valeur + libellé + delta).
-- `status_pill()`    : pilule de statut (online/offline) pour la sidebar.
+- `apply_theme()`      : injecte le CSS global (light/dark), la typographie,
+                         les couleurs, cartes, boutons, sidebar, chat, etc.
+- `page_header()`      : en-tête « héro » dégradé (avec illustration optionnelle).
+- `section_title()`    : titre de section stylisé avec icône.
+- `stat_badge()`       : petit badge/pilule coloré pour les statuts.
+- `chip()` / `chips()` : pastilles discrètes (tags).
+- `empty_state()`      : état vide illustré (icône + titre + texte).
+- `metric_card()`      : carte KPI riche (icône + valeur + libellé + delta).
+- `status_pill()`      : pilule de statut (online/offline) pour la sidebar.
+- `success_banner()`   : bandeau de statut vert (style « toast » plein largeur).
+- `suggestion_card()`  : carte d'invitation en dégradé (centre d'intérêt, etc.).
+- `img_data_uri()`     : encode une image locale en data-URI (embeddable HTML).
 
-Le design vise une apparence moderne, douce et cohérente (palette violette
-« cognitive »), tout en restant 100 % compatible avec les composants natifs
-de Streamlit.
+Le design vise un rendu « produit SaaS » moderne : surfaces blanches arrondies,
+ombres douces, palette violette « cognitive » et un mode sombre soigné.
 """
 
 from __future__ import annotations
+
+import base64
+from functools import lru_cache
+from pathlib import Path
 
 import streamlit as st
 
@@ -31,7 +37,7 @@ PALETTE = {
     "accent": "#A855F7",
     "ink": "#1E1B2E",
     "muted": "#6B6880",
-    "bg": "#F6F5FC",
+    "bg": "#F5F4FB",
     "surface": "#FFFFFF",
     "border": "#ECEAF6",
     "success": "#16A34A",
@@ -41,64 +47,119 @@ PALETTE = {
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# CSS global
+# Utilitaires
 # ═══════════════════════════════════════════════════════════════════════
 
-_GLOBAL_CSS = """
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+@lru_cache(maxsize=16)
+def img_data_uri(path: str) -> str:
+    """Encode une image locale en data-URI (utilisable dans `st.html`)."""
+    try:
+        raw = Path(path).read_bytes()
+        ext = Path(path).suffix.lstrip(".").lower() or "png"
+        if ext == "svg":
+            ext = "svg+xml"
+        b64 = base64.b64encode(raw).decode("ascii")
+        return f"data:image/{ext};base64,{b64}"
+    except Exception:
+        return ""
 
-:root {
+
+def get_theme_mode() -> str:
+    """Retourne le mode de thème courant ('light' | 'dark')."""
+    return st.session_state.get("theme_mode", "light")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Variables CSS — light / dark
+# ═══════════════════════════════════════════════════════════════════════
+
+_LIGHT_VARS = """
     --ca-primary: #6C5CE7;
     --ca-primary-soft: #8E7BFF;
     --ca-accent: #A855F7;
     --ca-ink: #1E1B2E;
     --ca-muted: #6B6880;
-    --ca-bg: #F6F5FC;
+    --ca-faint: #9690B0;
+    --ca-bg: #F2F1FA;
     --ca-surface: #FFFFFF;
+    --ca-surface-2: #FAF9FE;
+    --ca-sidebar: #FFFFFF;
     --ca-border: #ECEAF6;
+    --ca-border-soft: #F1EFFA;
     --ca-success: #16A34A;
+    --ca-success-bg: #E9F8EF;
     --ca-warning: #D97706;
     --ca-danger: #DC2626;
-    --ca-shadow: 0 8px 24px rgba(30, 27, 46, 0.06);
-    --ca-shadow-lg: 0 18px 40px rgba(108, 92, 231, 0.16);
-    --ca-radius: 16px;
-}
+    --ca-user-bubble: linear-gradient(135deg, #EEEAFD, #F3EEFE);
+    --ca-shadow: 0 10px 30px rgba(30, 27, 46, 0.06);
+    --ca-shadow-sm: 0 4px 14px rgba(30, 27, 46, 0.05);
+    --ca-shadow-lg: 0 22px 48px rgba(108, 92, 231, 0.16);
+    --ca-radius: 18px;
+"""
+
+_DARK_VARS = """
+    --ca-primary: #8E7BFF;
+    --ca-primary-soft: #A78BFF;
+    --ca-accent: #C084FC;
+    --ca-ink: #F4F2FF;
+    --ca-muted: #A7A2C4;
+    --ca-faint: #837EA0;
+    --ca-bg: #14131C;
+    --ca-surface: #1E1C2A;
+    --ca-surface-2: #232133;
+    --ca-sidebar: #1A1825;
+    --ca-border: #2C2940;
+    --ca-border-soft: #262338;
+    --ca-success: #34D399;
+    --ca-success-bg: rgba(52, 211, 153, 0.12);
+    --ca-warning: #FBBF24;
+    --ca-danger: #F87171;
+    --ca-user-bubble: linear-gradient(135deg, rgba(142,123,255,0.22), rgba(168,85,247,0.18));
+    --ca-shadow: 0 10px 30px rgba(0, 0, 0, 0.40);
+    --ca-shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.35);
+    --ca-shadow-lg: 0 22px 48px rgba(0, 0, 0, 0.55);
+    --ca-radius: 18px;
+"""
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# CSS global (composants)
+# ═══════════════════════════════════════════════════════════════════════
+
+_COMPONENT_CSS = """
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
 /* ── Typographie & fond ─────────────────────────────────────────── */
 html, body, [class*="css"], .stApp, button, input, textarea, select {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
-/* Fond avec halos dégradés subtils façon « mesh » */
 .stApp {
     background:
-        radial-gradient(1100px 520px at 8% -8%, rgba(108, 92, 231, 0.10), transparent 60%),
-        radial-gradient(900px 480px at 100% 0%, rgba(168, 85, 247, 0.08), transparent 55%),
+        radial-gradient(1100px 520px at 6% -10%, rgba(108, 92, 231, 0.10), transparent 60%),
+        radial-gradient(900px 480px at 102% -4%, rgba(168, 85, 247, 0.10), transparent 55%),
         var(--ca-bg);
     color: var(--ca-ink);
 }
-
-/* Largeur & respiration du contenu principal */
 .block-container {
-    padding-top: 1rem;
-    padding-bottom: 4rem;
-    max-width: 1180px;
+    padding-top: 1.1rem;
+    padding-bottom: 3rem;
+    max-width: 1280px;
 }
-
 h1, h2, h3, h4 { color: var(--ca-ink); letter-spacing: -0.01em; }
+p, span, label, li, .stMarkdown { color: var(--ca-ink); }
 
-/* ── Scrollbar personnalisée ────────────────────────────────────── */
+/* ── Scrollbar ──────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-    background: rgba(108, 92, 231, 0.28);
+    background: rgba(108, 92, 231, 0.30);
     border-radius: 999px;
     border: 2px solid transparent;
     background-clip: padding-box;
 }
-::-webkit-scrollbar-thumb:hover { background: rgba(108, 92, 231, 0.5); background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: rgba(108, 92, 231, 0.55); background-clip: padding-box; }
 
-/* ── Animations d'apparition ────────────────────────────────────── */
+/* ── Animations ─────────────────────────────────────────────────── */
 @keyframes caFadeUp {
     from { opacity: 0; transform: translateY(8px); }
     to   { opacity: 1; transform: translateY(0); }
@@ -110,51 +171,55 @@ h1, h2, h3, h4 { color: var(--ca-ink); letter-spacing: -0.01em; }
     position: relative;
     display: flex;
     align-items: center;
-    gap: 18px;
-    background: linear-gradient(120deg, #6C5CE7 0%, #8E7BFF 55%, #A855F7 100%);
+    gap: 20px;
+    background: linear-gradient(110deg, #6C5CE7 0%, #7A6AF0 45%, #9B6BF5 100%);
     border-radius: 22px;
-    padding: 22px 28px;
-    margin-bottom: 18px;
-    box-shadow: 0 14px 34px rgba(108, 92, 231, 0.28);
+    padding: 26px 30px;
+    margin-bottom: 16px;
+    box-shadow: 0 18px 38px rgba(108, 92, 231, 0.30);
     overflow: hidden;
+    min-height: 104px;
 }
-/* Motif décoratif discret dans le héro */
 .ca-hero::after {
     content: "";
     position: absolute;
-    top: -40%;
-    right: -5%;
-    width: 280px;
-    height: 280px;
-    background: radial-gradient(circle, rgba(255,255,255,0.18), transparent 70%);
+    top: -45%; right: -3%;
+    width: 300px; height: 300px;
+    background: radial-gradient(circle, rgba(255,255,255,0.20), transparent 70%);
     border-radius: 50%;
     pointer-events: none;
 }
+.ca-hero-art {
+    position: absolute;
+    right: 22px; top: 50%;
+    transform: translateY(-50%);
+    height: 118px;
+    opacity: 0.42;
+    pointer-events: none;
+    filter: drop-shadow(0 8px 18px rgba(0,0,0,0.18));
+}
 .ca-hero-icon {
     flex: 0 0 auto;
-    font-size: 2.2rem;
-    width: 62px;
-    height: 62px;
+    font-size: 1.7rem;
+    width: 60px; height: 60px;
     border-radius: 18px;
-    background: rgba(255, 255, 255, 0.18);
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    background: rgba(255, 255, 255, 0.20);
+    display: flex; align-items: center; justify-content: center;
     backdrop-filter: blur(4px);
-    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.25);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.28);
 }
 .ca-hero-title {
     color: #fff !important;
     margin: 0;
-    font-size: 1.85rem;
+    font-size: 1.7rem;
     font-weight: 800;
     line-height: 1.1;
     position: relative;
 }
 .ca-hero-sub {
-    color: rgba(255, 255, 255, 0.9);
-    margin: 0.3rem 0 0;
-    font-size: 0.98rem;
+    color: rgba(255, 255, 255, 0.92);
+    margin: 0.35rem 0 0;
+    font-size: 0.95rem;
     font-weight: 400;
     position: relative;
 }
@@ -163,41 +228,33 @@ h1, h2, h3, h4 { color: var(--ca-ink); letter-spacing: -0.01em; }
 .ca-section {
     display: flex;
     align-items: center;
-    gap: 10px;
-    font-size: 1.15rem;
+    gap: 9px;
+    font-size: 0.98rem;
     font-weight: 700;
     color: var(--ca-ink);
-    margin: 6px 0 10px;
+    margin: 4px 0 12px;
+    white-space: nowrap;
 }
 .ca-section .ca-section-bar {
-    width: 4px;
-    height: 20px;
+    width: 4px; height: 18px;
     border-radius: 4px;
     background: linear-gradient(180deg, var(--ca-primary), var(--ca-accent));
 }
 
 /* ── Badges / pilules ───────────────────────────────────────────── */
 .ca-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.8rem;
-    font-weight: 600;
-    padding: 4px 12px;
-    border-radius: 999px;
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 0.8rem; font-weight: 600;
+    padding: 4px 12px; border-radius: 999px;
     border: 1px solid transparent;
 }
 .ca-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.78rem;
-    font-weight: 600;
-    padding: 5px 11px;
-    border-radius: 999px;
-    background: rgba(108, 92, 231, 0.08);
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 0.78rem; font-weight: 600;
+    padding: 5px 11px; border-radius: 999px;
+    background: rgba(108, 92, 231, 0.10);
     color: var(--ca-primary);
-    border: 1px solid rgba(108, 92, 231, 0.16);
+    border: 1px solid rgba(108, 92, 231, 0.18);
     margin: 0 6px 6px 0;
 }
 
@@ -208,26 +265,21 @@ h1, h2, h3, h4 { color: var(--ca-ink); letter-spacing: -0.01em; }
     border: 1px solid var(--ca-border);
     border-radius: 18px;
     padding: 18px 20px;
-    box-shadow: var(--ca-shadow);
+    box-shadow: var(--ca-shadow-sm);
     transition: transform 0.18s ease, box-shadow 0.18s ease;
-    overflow: hidden;
-    height: 100%;
+    overflow: hidden; height: 100%;
 }
 .ca-metric::before {
     content: "";
-    position: absolute;
-    left: 0; top: 0; bottom: 0;
-    width: 4px;
+    position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
     background: linear-gradient(180deg, var(--ca-primary), var(--ca-accent));
 }
 .ca-metric:hover { transform: translateY(-3px); box-shadow: var(--ca-shadow-lg); }
 .ca-metric-top { display: flex; align-items: center; justify-content: space-between; }
 .ca-metric-icon {
-    font-size: 1.1rem;
-    width: 38px; height: 38px;
+    font-size: 1.1rem; width: 38px; height: 38px;
     display: flex; align-items: center; justify-content: center;
-    border-radius: 12px;
-    background: rgba(108, 92, 231, 0.10);
+    border-radius: 12px; background: rgba(108, 92, 231, 0.12);
 }
 .ca-metric-value { font-size: 1.8rem; font-weight: 800; color: var(--ca-ink); margin: 8px 0 2px; line-height: 1; }
 .ca-metric-label { font-size: 0.85rem; color: var(--ca-muted); font-weight: 600; }
@@ -235,53 +287,74 @@ h1, h2, h3, h4 { color: var(--ca-ink); letter-spacing: -0.01em; }
 
 /* ── État vide ──────────────────────────────────────────────────── */
 .ca-empty {
-    text-align: center;
-    padding: 38px 24px;
+    text-align: center; padding: 38px 24px;
     border: 1.5px dashed var(--ca-border);
     border-radius: 20px;
-    background: linear-gradient(180deg, rgba(255,255,255,0.6), rgba(246,245,252,0.4));
+    background: var(--ca-surface-2);
 }
 .ca-empty-icon {
-    font-size: 2.6rem;
-    width: 78px; height: 78px;
-    margin: 0 auto 14px;
+    font-size: 2.4rem; width: 76px; height: 76px; margin: 0 auto 14px;
     display: flex; align-items: center; justify-content: center;
-    border-radius: 22px;
-    background: rgba(108, 92, 231, 0.10);
+    border-radius: 22px; background: rgba(108, 92, 231, 0.12);
 }
-.ca-empty-title { font-size: 1.15rem; font-weight: 700; color: var(--ca-ink); margin: 0; }
+.ca-empty-title { font-size: 1.12rem; font-weight: 700; color: var(--ca-ink); margin: 0; }
 .ca-empty-text { font-size: 0.92rem; color: var(--ca-muted); margin: 6px auto 0; max-width: 460px; }
 
-/* ── Métriques natives (st.metric) ──────────────────────────────── */
+/* ── Bandeau de succès (plein largeur) ──────────────────────────── */
+.ca-banner {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--ca-success-bg);
+    border: 1px solid rgba(22, 163, 74, 0.22);
+    color: var(--ca-success);
+    border-radius: 14px;
+    padding: 12px 16px;
+    font-size: 0.9rem; font-weight: 600;
+    margin: 2px 0 16px;
+}
+.ca-banner .ca-banner-dot {
+    width: 20px; height: 20px; border-radius: 50%;
+    background: var(--ca-success); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.7rem; flex: 0 0 auto;
+}
+
+/* ── Carte « suggestion » en dégradé ────────────────────────────── */
+.ca-suggest {
+    position: relative; overflow: hidden;
+    background: linear-gradient(140deg, #6C5CE7, #8B6BF2 60%, #A855F7);
+    border-radius: 18px;
+    padding: 18px 20px;
+    box-shadow: 0 14px 30px rgba(108, 92, 231, 0.30);
+    color: #fff;
+}
+.ca-suggest::after {
+    content: ""; position: absolute; right: -30px; top: -30px;
+    width: 130px; height: 130px;
+    background: radial-gradient(circle, rgba(255,255,255,0.20), transparent 70%);
+    border-radius: 50%;
+}
+.ca-suggest-title { font-weight: 800; font-size: 1rem; display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.ca-suggest-text { font-size: 0.84rem; line-height: 1.5; color: rgba(255,255,255,0.92); position: relative; }
+
+/* ── Métriques natives ──────────────────────────────────────────── */
 [data-testid="stMetric"] {
     background: var(--ca-surface);
     border: 1px solid var(--ca-border);
-    border-radius: 18px;
-    padding: 18px 20px;
-    box-shadow: var(--ca-shadow);
+    border-radius: 18px; padding: 18px 20px;
+    box-shadow: var(--ca-shadow-sm);
     transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
-[data-testid="stMetric"]:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 12px 28px rgba(108, 92, 231, 0.12);
-}
-[data-testid="stMetricValue"] {
-    color: var(--ca-primary);
-    font-weight: 800;
-}
+[data-testid="stMetric"]:hover { transform: translateY(-2px); box-shadow: var(--ca-shadow); }
+[data-testid="stMetricValue"] { color: var(--ca-primary); font-weight: 800; }
 [data-testid="stMetricLabel"] { color: var(--ca-muted); font-weight: 600; }
 
 /* ── Boutons ────────────────────────────────────────────────────── */
 button[data-testid^="stBaseButton"] {
-    border-radius: 12px;
-    font-weight: 600;
-    transition: transform 0.12s ease, box-shadow 0.15s ease, background 0.15s ease;
+    border-radius: 12px; font-weight: 600;
+    transition: transform 0.12s ease, box-shadow 0.15s ease, background 0.15s ease, color 0.15s ease;
 }
-button[data-testid^="stBaseButton"]:hover {
-    transform: translateY(-1px);
-}
+button[data-testid^="stBaseButton"]:hover { transform: translateY(-1px); }
 button[data-testid^="stBaseButton"]:active { transform: translateY(0); }
-/* Variantes secondaires (par défaut) */
 button[data-testid="stBaseButton-secondary"],
 button[data-testid="stBaseButton-secondaryFormSubmit"] {
     background: var(--ca-surface);
@@ -290,107 +363,219 @@ button[data-testid="stBaseButton-secondaryFormSubmit"] {
 }
 button[data-testid="stBaseButton-secondary"]:hover,
 button[data-testid="stBaseButton-secondaryFormSubmit"]:hover {
-    border-color: var(--ca-primary);
-    color: var(--ca-primary);
-    box-shadow: 0 6px 16px rgba(108, 92, 231, 0.12);
+    border-color: var(--ca-primary); color: var(--ca-primary);
+    box-shadow: 0 6px 16px rgba(108, 92, 231, 0.14);
 }
-/* Variantes primaires */
 button[data-testid="stBaseButton-primary"],
 button[data-testid="stBaseButton-primaryFormSubmit"] {
     background: linear-gradient(135deg, var(--ca-primary), var(--ca-primary-soft));
-    border: none;
-    color: #fff;
+    border: none; color: #fff;
     box-shadow: 0 6px 18px rgba(108, 92, 231, 0.30);
 }
 button[data-testid="stBaseButton-primary"]:hover,
 button[data-testid="stBaseButton-primaryFormSubmit"]:hover {
     box-shadow: 0 10px 24px rgba(108, 92, 231, 0.40);
 }
-/* Bouton de téléchargement */
-button[data-testid="stBaseButton-secondary"][kind] { border-radius: 12px; }
 
 /* ── Champs de saisie ───────────────────────────────────────────── */
-.stTextInput input,
-.stTextArea textarea,
-.stNumberInput input,
-[data-baseweb="select"] > div,
-[data-baseweb="input"] {
+.stTextInput input, .stTextArea textarea, .stNumberInput input,
+[data-baseweb="select"] > div, [data-baseweb="input"] {
     border-radius: 12px !important;
+    background: var(--ca-surface) !important;
+    color: var(--ca-ink) !important;
 }
-.stTextInput input:focus,
-.stTextArea textarea:focus {
+.stTextInput input:focus, .stTextArea textarea:focus {
     border-color: var(--ca-primary) !important;
-    box-shadow: 0 0 0 3px rgba(108, 92, 231, 0.15) !important;
+    box-shadow: 0 0 0 3px rgba(108, 92, 231, 0.16) !important;
 }
 
 /* ── Sidebar ────────────────────────────────────────────────────── */
 [data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #F7F6FE 0%, #EEEBFB 100%);
+    background: var(--ca-sidebar);
     border-right: 1px solid var(--ca-border);
 }
-[data-testid="stSidebar"] .block-container { padding-top: 1.5rem; }
+[data-testid="stSidebar"] .block-container { padding-top: 1.4rem; }
+[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 0.55rem; }
+
+/* Boutons de navigation dans la sidebar */
+[data-testid="stSidebar"] button[data-testid="stBaseButton-secondary"] {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--ca-muted);
+    justify-content: flex-start;
+    text-align: left;
+    font-weight: 600;
+    padding: 9px 14px;
+    box-shadow: none;
+}
+[data-testid="stSidebar"] button[data-testid="stBaseButton-secondary"] p {
+    color: var(--ca-muted); text-align: left; width: 100%;
+}
+[data-testid="stSidebar"] button[data-testid="stBaseButton-secondary"]:hover {
+    background: rgba(108, 92, 231, 0.07);
+    border-color: transparent;
+    color: var(--ca-primary);
+    transform: none;
+    box-shadow: none;
+}
+[data-testid="stSidebar"] button[data-testid="stBaseButton-secondary"]:hover p { color: var(--ca-primary); }
+/* État actif (page courante) */
+[data-testid="stSidebar"] button[data-testid="stBaseButton-primary"] {
+    background: rgba(108, 92, 231, 0.12);
+    border: 1px solid rgba(108, 92, 231, 0.20);
+    color: var(--ca-primary);
+    justify-content: flex-start; text-align: left;
+    font-weight: 700; padding: 9px 14px;
+    box-shadow: none;
+}
+[data-testid="stSidebar"] button[data-testid="stBaseButton-primary"] p { color: var(--ca-primary); text-align: left; width: 100%; }
+[data-testid="stSidebar"] button[data-testid="stBaseButton-primary"]:hover {
+    box-shadow: none; transform: none;
+    background: rgba(108, 92, 231, 0.16);
+}
 
 /* ── Chat ───────────────────────────────────────────────────────── */
 [data-testid="stChatMessage"] {
-    background: var(--ca-surface);
-    border: 1px solid var(--ca-border);
-    border-radius: 18px;
-    padding: 8px 16px;
-    box-shadow: 0 2px 10px rgba(30, 27, 46, 0.04);
-    margin-bottom: 8px;
+    background: transparent;
+    border: none;
+    padding: 2px 0;
+    box-shadow: none;
+    margin-bottom: 2px;
     animation: caFadeUp 0.35s ease both;
 }
-/* Différenciation visuelle des messages utilisateur (dégradé doux) */
-[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) {
-    background: linear-gradient(135deg, rgba(108,92,231,0.10), rgba(168,85,247,0.08));
-    border-color: rgba(108, 92, 231, 0.18);
+/* Bulle assistant (blanche, coin haut-gauche net) */
+[data-testid="stChatMessageContent"][aria-label="Chat message from assistant"] {
+    background: var(--ca-surface);
+    border: 1px solid var(--ca-border);
+    border-radius: 6px 18px 18px 18px;
+    padding: 12px 18px;
+    box-shadow: var(--ca-shadow-sm);
+    max-width: 88%;
+}
+/* Bulle utilisateur (alignée à droite, dégradé doux) */
+[data-testid="stChatMessage"]:has([aria-label="Chat message from user"]) {
+    flex-direction: row-reverse;
+}
+[data-testid="stChatMessageContent"][aria-label="Chat message from user"] {
+    background: var(--ca-user-bubble);
+    border: 1px solid rgba(108, 92, 231, 0.18);
+    border-radius: 18px 6px 18px 18px;
+    padding: 12px 18px;
+    box-shadow: var(--ca-shadow-sm);
+    max-width: 88%;
+}
+[data-testid="stChatMessageContent"][aria-label="Chat message from user"] p { color: var(--ca-ink); }
+/* Avatars ronds */
+[data-testid="stChatMessage"] > div:first-child:not([data-testid]) {
+    border-radius: 50%;
+    background: var(--ca-surface);
+    border: 1px solid var(--ca-border);
+    box-shadow: var(--ca-shadow-sm);
 }
 [data-testid="stChatInput"] {
     border-radius: 16px;
     border: 1px solid var(--ca-border);
+    background: var(--ca-surface);
     box-shadow: var(--ca-shadow);
 }
+[data-testid="stChatInput"] textarea { color: var(--ca-ink); }
 [data-testid="stChatInput"]:focus-within {
     border-color: var(--ca-primary);
-    box-shadow: 0 0 0 3px rgba(108, 92, 231, 0.15);
+    box-shadow: 0 0 0 3px rgba(108, 92, 231, 0.16);
 }
+
+/* Chips d'action sous les réponses (boutons compacts, scope par clé) */
+[class*="st-key-act_"] button[data-testid^="stBaseButton"] {
+    border-radius: 999px !important;
+    padding: 3px 14px !important;
+    min-height: 0 !important;
+    height: 30px;
+    width: auto !important;
+    white-space: nowrap;
+    font-size: 0.78rem !important;
+    font-weight: 600;
+    background: var(--ca-surface-2) !important;
+    border: 1px solid var(--ca-border) !important;
+    color: var(--ca-muted) !important;
+    box-shadow: none !important;
+}
+[class*="st-key-act_"] button[data-testid^="stBaseButton"] p {
+    color: var(--ca-muted);
+    overflow: visible;
+    text-overflow: clip;
+    white-space: nowrap;
+}
+[class*="st-key-act_"] button[data-testid^="stBaseButton"]:hover {
+    border-color: var(--ca-primary) !important; color: var(--ca-primary) !important;
+    transform: none;
+}
+[class*="st-key-act_"] button[data-testid^="stBaseButton"]:hover p { color: var(--ca-primary); }
+
+/* Lignes de suggestion (colonne droite) */
+[class*="st-key-sug_"] button[data-testid^="stBaseButton"],
+[class*="st-key-welcome_sug_"] button[data-testid^="stBaseButton"] {
+    background: var(--ca-surface-2) !important;
+    border: 1px solid var(--ca-border) !important;
+    color: var(--ca-ink) !important;
+    text-align: left;
+    justify-content: flex-start;
+    font-weight: 500;
+    font-size: 0.82rem;
+    box-shadow: none !important;
+    padding: 10px 14px !important;
+}
+[class*="st-key-sug_"] button[data-testid^="stBaseButton"] p,
+[class*="st-key-welcome_sug_"] button[data-testid^="stBaseButton"] p {
+    text-align: left; width: 100%; color: var(--ca-ink);
+}
+[class*="st-key-sug_"] button[data-testid^="stBaseButton"]:hover,
+[class*="st-key-welcome_sug_"] button[data-testid^="stBaseButton"]:hover {
+    border-color: var(--ca-primary) !important;
+    background: rgba(108,92,231,0.06) !important;
+    transform: none;
+}
+
+/* Ligne de document (colonne droite) */
+.ca-doc-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; padding: 9px 4px;
+    border-bottom: 1px solid var(--ca-border-soft);
+}
+.ca-doc-row:last-child { border-bottom: none; }
+.ca-doc-name { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: var(--ca-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ca-doc-meta { font-size: 0.72rem; color: var(--ca-faint); flex: 0 0 auto; }
 
 /* ── Expanders ──────────────────────────────────────────────────── */
 [data-testid="stExpander"] {
     border: 1px solid var(--ca-border) !important;
-    border-radius: 16px !important;
-    box-shadow: 0 2px 10px rgba(30, 27, 46, 0.03);
+    border-radius: 14px !important;
+    box-shadow: var(--ca-shadow-sm);
     overflow: hidden;
     background: var(--ca-surface);
 }
+[data-testid="stExpander"] summary { color: var(--ca-ink); }
 [data-testid="stExpander"] summary:hover { color: var(--ca-primary); }
 
-/* ── Onglets ────────────────────────────────────────────────────── */
+/* ── Onglets baseweb ────────────────────────────────────────────── */
 .stTabs [data-baseweb="tab-list"] { gap: 6px; border-bottom: none; }
 .stTabs [data-baseweb="tab"] {
-    border-radius: 12px;
-    padding: 8px 16px;
-    font-weight: 600;
-    color: var(--ca-muted);
+    border-radius: 12px; padding: 8px 16px; font-weight: 600; color: var(--ca-muted);
 }
 .stTabs [data-baseweb="tab"]:hover { color: var(--ca-primary); }
-.stTabs [aria-selected="true"] {
-    background: rgba(108, 92, 231, 0.12);
-    color: var(--ca-primary) !important;
-}
+.stTabs [aria-selected="true"] { background: rgba(108, 92, 231, 0.12); color: var(--ca-primary) !important; }
 .stTabs [data-baseweb="tab-highlight"] { background: var(--ca-primary); }
 
-/* ── Conteneurs bordés (st.container(border=True)) ──────────────── */
+/* ── Conteneurs bordés ──────────────────────────────────────────── */
 [data-testid="stVerticalBlockBorderWrapper"] {
-    border-radius: 16px;
+    border-radius: 18px;
     transition: box-shadow 0.18s ease, border-color 0.18s ease;
 }
 
-/* ── File uploader (dropzone) ───────────────────────────────────── */
+/* ── File uploader ──────────────────────────────────────────────── */
 [data-testid="stFileUploaderDropzone"] {
     border: 1.5px dashed rgba(108, 92, 231, 0.35) !important;
     border-radius: 16px !important;
-    background: linear-gradient(180deg, rgba(108,92,231,0.04), rgba(255,255,255,0.4)) !important;
+    background: var(--ca-surface-2) !important;
     transition: border-color 0.18s ease, background 0.18s ease;
 }
 [data-testid="stFileUploaderDropzone"]:hover {
@@ -398,69 +583,57 @@ button[data-testid="stBaseButton-secondary"][kind] { border-radius: 12px; }
     background: rgba(108, 92, 231, 0.07) !important;
 }
 
-/* ── Barre de progression ───────────────────────────────────────── */
+/* ── Progress ───────────────────────────────────────────────────── */
 [data-testid="stProgress"] [role="progressbar"] > div {
     background: linear-gradient(90deg, var(--ca-primary), var(--ca-accent));
 }
 
-/* ── Alertes (info/success/warning/error) ───────────────────────── */
+/* ── Alertes ────────────────────────────────────────────────────── */
 [data-testid="stAlert"] { border-radius: 14px; }
 
-/* ── Navigation segmentée (top nav) — fixée en haut au scroll ───── */
+/* ── Navigation segmentée (top nav) ─────────────────────────────── */
 div[data-testid="stElementContainer"]:has(div[data-testid="stSegmentedControl"]) {
-    position: sticky;
-    top: 0;
-    z-index: 1000;
-    background: var(--ca-bg);
-    padding: 10px 0 10px;
-    margin-bottom: 2px;
-    box-shadow: 0 8px 18px -10px rgba(30, 27, 46, 0.25);
+    position: sticky; top: 0; z-index: 1000;
+    padding: 8px 0; margin-bottom: 2px;
 }
 div[data-testid="stSegmentedControl"] {
-    display: flex;
-    justify-content: center;
-    width: 100%;
-    margin: 2px 0 6px 0;
+    display: flex; justify-content: flex-start; width: 100%; margin: 0;
 }
 div[data-testid="stSegmentedControl"] [role="group"] {
     background: var(--ca-surface);
     border: 1px solid var(--ca-border);
-    border-radius: 14px;
-    padding: 5px;
-    box-shadow: var(--ca-shadow);
-    gap: 4px;
+    border-radius: 14px; padding: 5px;
+    box-shadow: var(--ca-shadow-sm); gap: 4px;
 }
 div[data-testid="stSegmentedControl"] button {
-    padding: 8px 18px !important;
-    font-size: 15px;
-    font-weight: 600;
-    border-radius: 10px !important;
-    border: none !important;
+    padding: 8px 18px !important; font-size: 14px; font-weight: 600;
+    border-radius: 10px !important; border: none !important;
+    color: var(--ca-muted) !important;
     transition: background 0.15s ease, color 0.15s ease;
 }
+div[data-testid="stSegmentedControl"] button p { color: var(--ca-muted); }
 div[data-testid="stSegmentedControl"] button[aria-checked="true"],
 div[data-testid="stSegmentedControl"] button[aria-selected="true"] {
-    background: linear-gradient(135deg, var(--ca-primary), var(--ca-primary-soft)) !important;
-    color: #fff !important;
-    box-shadow: 0 6px 16px rgba(108, 92, 231, 0.28);
+    background: rgba(108, 92, 231, 0.14) !important;
+    color: var(--ca-primary) !important;
+    box-shadow: none;
 }
+div[data-testid="stSegmentedControl"] button[aria-checked="true"] p,
+div[data-testid="stSegmentedControl"] button[aria-selected="true"] p { color: var(--ca-primary); }
 
 /* ── Dataframes ─────────────────────────────────────────────────── */
 [data-testid="stDataFrame"] {
-    border-radius: 14px;
-    overflow: hidden;
-    border: 1px solid var(--ca-border);
+    border-radius: 14px; overflow: hidden; border: 1px solid var(--ca-border);
 }
 
-/* ── Divider plus discret ───────────────────────────────────────── */
+/* ── Divider ────────────────────────────────────────────────────── */
 hr { border-color: var(--ca-border); opacity: 0.7; }
 
-/* Masquer le menu/footer/barre supérieure Streamlit (Deploy). */
+/* Masquer chrome Streamlit */
 #MainMenu { visibility: hidden; }
 footer { visibility: hidden; }
 [data-testid="stHeader"] { display: none; }
 [data-testid="stToolbar"] { display: none; }
-</style>
 """
 
 
@@ -469,19 +642,31 @@ footer { visibility: hidden; }
 # ═══════════════════════════════════════════════════════════════════════
 
 def apply_theme() -> None:
-    """Injecte le thème global. À appeler une fois par run, tôt dans `main()`."""
-    st.html(_GLOBAL_CSS)
+    """Injecte le thème global (variables + composants). À appeler tôt dans `main()`."""
+    variables = _DARK_VARS if get_theme_mode() == "dark" else _LIGHT_VARS
+    st.html(f"<style>:root {{{variables}}}\n{_COMPONENT_CSS}</style>")
 
 
-def page_header(title: str, subtitle: str | None = None, icon: str = "🧠") -> None:
+def page_header(
+    title: str,
+    subtitle: str | None = None,
+    icon: str = "🧠",
+    art_image: str | None = None,
+) -> None:
     """Affiche un en-tête « héro » dégradé en haut d'une page.
 
     Args:
-        title:    Titre principal de la page.
-        subtitle: Sous-titre / description courte (optionnel).
-        icon:     Emoji affiché dans la pastille à gauche.
+        title:     Titre principal.
+        subtitle:  Sous-titre / description courte (optionnel).
+        icon:      Emoji affiché dans la pastille à gauche.
+        art_image: Chemin d'une image décorative affichée à droite (optionnel).
     """
     sub_html = f'<p class="ca-hero-sub">{subtitle}</p>' if subtitle else ""
+    art_html = ""
+    if art_image:
+        uri = img_data_uri(art_image)
+        if uri:
+            art_html = f'<img class="ca-hero-art" src="{uri}" alt="" />'
     st.html(
         f"""
         <div class="ca-hero">
@@ -490,6 +675,7 @@ def page_header(title: str, subtitle: str | None = None, icon: str = "🧠") -> 
                 <h1 class="ca-hero-title">{title}</h1>
                 {sub_html}
             </div>
+            {art_html}
         </div>
         """
     )
@@ -508,12 +694,7 @@ def section_title(title: str) -> None:
 
 
 def stat_badge(label: str, kind: str = "primary") -> str:
-    """Retourne le HTML d'un badge/pilule coloré (à passer à st.html).
-
-    Args:
-        label: Texte du badge.
-        kind:  'primary' | 'success' | 'warning' | 'danger' | 'muted'.
-    """
+    """Retourne le HTML d'un badge/pilule coloré (à passer à st.html)."""
     colors = {
         "primary": ("rgba(108,92,231,.12)", "#6C5CE7"),
         "success": ("rgba(22,163,74,.12)", "#16A34A"),
@@ -522,13 +703,11 @@ def stat_badge(label: str, kind: str = "primary") -> str:
         "muted": ("rgba(107,104,128,.12)", "#6B6880"),
     }
     bg, fg = colors.get(kind, colors["primary"])
-    return (
-        f'<span class="ca-badge" style="background:{bg};color:{fg};">{label}</span>'
-    )
+    return f'<span class="ca-badge" style="background:{bg};color:{fg};">{label}</span>'
 
 
 def chip(label: str) -> str:
-    """Retourne le HTML d'une pastille discrète (tag). À passer à st.html."""
+    """Retourne le HTML d'une pastille discrète (tag)."""
     return f'<span class="ca-chip">{label}</span>'
 
 
@@ -541,13 +720,7 @@ def chips(labels: list[str]) -> None:
 
 
 def empty_state(icon: str, title: str, text: str = "") -> None:
-    """Affiche un état vide illustré et centré.
-
-    Args:
-        icon:  Emoji illustratif.
-        title: Titre court.
-        text:  Texte d'explication / d'invitation (optionnel).
-    """
+    """Affiche un état vide illustré et centré."""
     text_html = f'<p class="ca-empty-text">{text}</p>' if text else ""
     st.html(
         f"""
@@ -567,27 +740,15 @@ def metric_card(
     delta: str | None = None,
     delta_kind: str = "muted",
 ) -> None:
-    """Affiche une carte KPI riche (icône + valeur + libellé + delta optionnel).
-
-    Args:
-        label:      Libellé de la métrique.
-        value:      Valeur principale (sera convertie en str).
-        icon:       Emoji affiché en haut à droite.
-        delta:      Variation / sous-texte optionnel.
-        delta_kind: 'success' | 'warning' | 'danger' | 'muted'.
-    """
+    """Affiche une carte KPI riche (icône + valeur + libellé + delta optionnel)."""
     delta_colors = {
-        "success": "#16A34A",
-        "warning": "#D97706",
-        "danger": "#DC2626",
-        "muted": "#6B6880",
+        "success": "#16A34A", "warning": "#D97706",
+        "danger": "#DC2626", "muted": "#6B6880",
     }
     delta_html = ""
     if delta:
         color = delta_colors.get(delta_kind, "#6B6880")
-        delta_html = (
-            f'<div class="ca-metric-delta" style="color:{color};">{delta}</div>'
-        )
+        delta_html = f'<div class="ca-metric-delta" style="color:{color};">{delta}</div>'
     st.html(
         f"""
         <div class="ca-metric">
@@ -603,12 +764,7 @@ def metric_card(
 
 
 def status_pill(label: str, kind: str = "success") -> None:
-    """Affiche une pilule de statut compacte (idéale pour la sidebar).
-
-    Args:
-        label: Texte du statut.
-        kind:  'success' | 'danger' | 'warning' | 'muted'.
-    """
+    """Affiche une pilule de statut compacte (idéale pour la sidebar)."""
     colors = {
         "success": ("rgba(22,163,74,.12)", "#16A34A", "#16A34A"),
         "danger": ("rgba(220,38,38,.12)", "#DC2626", "#DC2626"),
@@ -624,6 +780,30 @@ def status_pill(label: str, kind: str = "success") -> None:
             <span style="width:8px;height:8px;border-radius:50%;background:{dot};
                          box-shadow:0 0 0 3px {bg};"></span>
             <span>{label}</span>
+        </div>
+        """
+    )
+
+
+def success_banner(text: str, icon: str = "✓") -> None:
+    """Affiche un bandeau de statut vert pleine largeur (style confirmation)."""
+    st.html(
+        f"""
+        <div class="ca-banner">
+            <span class="ca-banner-dot">{icon}</span>
+            <span>{text}</span>
+        </div>
+        """
+    )
+
+
+def suggestion_card(title: str, text: str, icon: str = "🎯") -> None:
+    """Affiche une carte d'invitation en dégradé (suggestion / centre d'intérêt)."""
+    st.html(
+        f"""
+        <div class="ca-suggest">
+            <div class="ca-suggest-title">{icon} {title}</div>
+            <div class="ca-suggest-text">{text}</div>
         </div>
         """
     )
