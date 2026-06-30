@@ -8,11 +8,17 @@ Lance l'interface multi-pages avec navigation sidebar :
 - 👤 Profil : Gestion du profil utilisateur
 """
 
+from pathlib import Path
+
 import streamlit as st
+
+_ASSETS_DIR = Path(__file__).parent / "assets"
+LOGO_PATH = str(_ASSETS_DIR / "logo.png")
+ICON_PATH = str(_ASSETS_DIR / "cogniassist_icon.png")
 
 st.set_page_config(
     page_title="CogniAssist",
-    page_icon="🧠",
+    page_icon=ICON_PATH,
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -49,20 +55,12 @@ def main() -> None:
 
     # ═══ Sidebar ═══
     with st.sidebar:
+        st.image(LOGO_PATH, use_container_width=True)
         st.html(
             """
-            <div style="display:flex;align-items:center;gap:12px;
-                        padding:6px 2px 14px;">
-                <div style="font-size:1.7rem;width:48px;height:48px;border-radius:14px;
-                            display:flex;align-items:center;justify-content:center;
-                            background:linear-gradient(135deg,#6C5CE7,#A855F7);
-                            box-shadow:0 8px 18px rgba(108,92,231,.35);">🧠</div>
-                <div>
-                    <div style="font-size:1.25rem;font-weight:800;color:#1E1B2E;
-                                line-height:1;">CogniAssist</div>
-                    <div style="font-size:.8rem;color:#6B6880;margin-top:2px;">
-                        Assistant cognitif intelligent</div>
-                </div>
+            <div style="font-size:.8rem;color:#6B6880;text-align:center;
+                        margin:-6px 0 4px;">
+                Assistant cognitif intelligent
             </div>
             """
         )

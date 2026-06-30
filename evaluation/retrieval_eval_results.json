@@ -1,0 +1,227 @@
+{
+  "k": 5,
+  "n_chunks": 37,
+  "chunks_per_file": {
+    "Kamal_HAMIDI_CV_fran.pdf": 5,
+    "kamal_hamidi_portfolio.txt": 28,
+    "lettre de motivation.pdf": 4
+  },
+  "n_questions": 36,
+  "summary": {
+    "Dense": {
+      "precision@5": 0.106,
+      "recall@5": 0.528,
+      "f1@5": 0.176,
+      "mrr": 0.488,
+      "hit@1": 0.472,
+      "hit@3": 0.5,
+      "hit@5": 0.528,
+      "avg_time_ms": 21.8,
+      "n_queries": 36
+    },
+    "BM25": {
+      "precision@5": 0.167,
+      "recall@5": 0.833,
+      "f1@5": 0.278,
+      "mrr": 0.669,
+      "hit@1": 0.583,
+      "hit@3": 0.75,
+      "hit@5": 0.833,
+      "avg_time_ms": 0.3,
+      "n_queries": 36
+    },
+    "Hybrid": {
+      "precision@5": 0.161,
+      "recall@5": 0.806,
+      "f1@5": 0.269,
+      "mrr": 0.706,
+      "hit@1": 0.639,
+      "hit@3": 0.778,
+      "hit@5": 0.806,
+      "avg_time_ms": 18.9,
+      "n_queries": 36
+    }
+  },
+  "questions": [
+    {
+      "question": "Quel est l'adresse email de l'étudiant cherchant un stage ?",
+      "gold_chunk_id": "Kamal_HAMIDI_CV_fran.pdf_0",
+      "file_name": "Kamal_HAMIDI_CV_fran.pdf"
+    },
+    {
+      "question": "Quel langage a été utilisé pour extraire et nettoyer les données applicatives ?",
+      "gold_chunk_id": "Kamal_HAMIDI_CV_fran.pdf_1",
+      "file_name": "Kamal_HAMIDI_CV_fran.pdf"
+    },
+    {
+      "question": "Quels sont les langages de programmation mentionnés dans l'extrait ?",
+      "gold_chunk_id": "Kamal_HAMIDI_CV_fran.pdf_2",
+      "file_name": "Kamal_HAMIDI_CV_fran.pdf"
+    },
+    {
+      "question": "Quel est le poste occupé par l'auteur de l'extrait entre juillet 2023 et octobre ?",
+      "gold_chunk_id": "Kamal_HAMIDI_CV_fran.pdf_3",
+      "file_name": "Kamal_HAMIDI_CV_fran.pdf"
+    },
+    {
+      "question": "Quel est le nom de la plateforme de réservation de voitures et taxis que vous avez participé à créer en développement web chez WeHELP ?",
+      "gold_chunk_id": "Kamal_HAMIDI_CV_fran.pdf_4",
+      "file_name": "Kamal_HAMIDI_CV_fran.pdf"
+    },
+    {
+      "question": "Quel est le site web de Kamal Hamidi ?",
+      "gold_chunk_id": "kamal_hamidi_portfolio.txt_0",
+      "file_name": "kamal_hamidi_portfolio.txt"
+    },
+    {
+      "question": "Quel est l'adresse email de Kamal HAMIDI ?",
+      "gold_chunk_id": "kamal_hamidi_portfolio.txt_1",
+      "file_name": "kamal_hamidi_portfolio.txt"
+    },
+    {
+      "question": "Quel est le profil professionnel de Kamal ?",
+      "gold_chunk_id": "kamal_hamidi_portfolio.txt_2",
+      "file_name": "kamal_hamidi_portfolio.txt"
+    },
+    {
+      "question": "Quel est le niveau de compétence en Python dans l'extrait?",
+      "gold_chunk_id": "kamal_hamidi_portfolio.txt_3",
+      "file_name": "kamal_hamidi_portfolio.txt"
+    },
+    {
+      "question": "Quel est le niveau de compétence en Vue.js dans l'extrait ?",
+      "gold_chunk_id": "kamal_hamidi_portfolio.txt_4",
+      "file_name": "kamal_hamidi_portfolio.txt"
+    },
+    {
+      "question": "Quel est l'employeur de l'équipe d'Accréditation CAF pour l'AFCON Morocco 2025 ?",
+      "gold_chunk_id": "kamal_hamidi_portfolio.txt_5",
+      "file_name": "kamal_hamidi_portfolio.txt"
+    },
+    {
+      "question": "Quel type de gestion est demandé pour les profils de haut niveau (officiels, médias, personnalités influentes du football) ?",
+      "gold_chunk_id": "kamal_hamidi_portfolio.txt_6",
+      "file_name": "kamal_hamidi_portfolio.txt"
+    },
+    {
+      "question": "Quel langage est utilisé pour l'extraction, nettoyage et analyse de données dans cette offre?",
+      "gold_chunk_id": "kamal_hamidi_portfolio.txt_7",
+      "file_name": "kamal_hamidi_portfolio.txt"
+    },
+    {
+      "question": "Quel est le lieu de travail du Web Developer & Designer mentionné dans ce texte ?",
+      "gold_chunk_id": "kamal_hamidi_portfolio.txt_8",
+      "file_name": "kamal_hamidi_portfolio.txt"
+    },
+    {
+      "question": "Quelle est l'API utilisée dans le projet de développement de la plateforme de réservation de voitures et taxis?",
+      "gold_chunk_id": "kamal_hamidi_portfolio.txt_9",
+      "file_name": "kamal_hamidi_portfolio.txt"
+    },
+    {
+      "question": "Quel est le domaine de travail pour ce stage de développeur web?",
+      "gold_chunk_id": "kamal_hamidi_portfolio.txt_10",
+      "file_name": "kamal_hamidi_portfolio.txt"
+    },
+    {
+      "question": "Quel est le sujet principal de la formation?",
+      "gold_chunk_id": "kamal_hamidi_portfolio.txt_11",
+      "file_name": "kamal_hamidi_portfolio.txt"
+    },
+    {
+      "question": "Quel est le domaine d'étude du Master en Sciences et Ingénierie des Données (MSID) ?",
+      "gold_chunk_id": "kamal_hamidi_portfolio.txt_12",
+      "file_name": "kamal_hamidi_portfolio.txt"
+    },
+    {
+      "question": "Quel est le domaine de spécialisation de la licence en Développement des Systèmes d'Information et de Communication à l'École Supérieure de Technologie pour la période Septembre 2023 — Juin 2024 ?",
+      "gold_chunk_id": "kamal_hamidi_portfolio.txt_13",
+      "file_name": "kamal_hamidi_portfolio.txt"
+    },
+    {
+      "question": "Quel est le domaine d'étude à l'École Supérieure de Technologie à Meknès, Maroc, entre Septembre 2021 et Juin 2023 ?",
+      "gold_chunk_id": "kamal_hamidi_portfolio.txt_14",
+      "file_name": "kamal_hamidi_portfolio.txt"
+    },
+    {
+      "question": "Quel est le titre de la section dans ce document ?",
+      "gold_chunk_id": "kamal_hamidi_portfolio.txt_15",
+      "file_name": "kamal_hamidi_portfolio.txt"
+    },
+    {
+      "question": "Quel est le prix obtenu par InfraScan AI lors du Hackathon national Redal & Veolia ?",
+      "gold_chunk_id": "kamal_hamidi_portfolio.txt_16",
+      "file_name": "kamal_hamidi_portfolio.txt"
+    },
+    {
+      "question": "Quel est le projet de deep learning utilisé pour détecter automatiquement des fractures à partir d'images médicales ?",
+      "gold_chunk_id": "kamal_hamidi_portfolio.txt_18",
+      "file_name": "kamal_hamidi_portfolio.txt"
+    },
+    {
+      "question": "Quel est le modèle de machine learning utilisé pour prédire la demande d'un café ?",
+      "gold_chunk_id": "kamal_hamidi_portfolio.txt_19",
+      "file_name": "kamal_hamidi_portfolio.txt"
+    },
+    {
+      "question": "Quel est le système de cybersécurité qui utilise le Q-learning ?",
+      "gold_chunk_id": "kamal_hamidi_portfolio.txt_20",
+      "file_name": "kamal_hamidi_portfolio.txt"
+    },
+    {
+      "question": "Quel est le domaine des données transformées par le pipeline end-to-end mentionné?",
+      "gold_chunk_id": "kamal_hamidi_portfolio.txt_21",
+      "file_name": "kamal_hamidi_portfolio.txt"
+    },
+    {
+      "question": "Quel est l'ID de la certification Python 101 pour Data Science obtenue en juin 2025 ?",
+      "gold_chunk_id": "kamal_hamidi_portfolio.txt_22",
+      "file_name": "kamal_hamidi_portfolio.txt"
+    },
+    {
+      "question": "Quel est l'ID de l'organisme Databricks dans le document ?",
+      "gold_chunk_id": "kamal_hamidi_portfolio.txt_23",
+      "file_name": "kamal_hamidi_portfolio.txt"
+    },
+    {
+      "question": "Quel est le domaine d'expertise en matière de cybersecurity AI ?",
+      "gold_chunk_id": "kamal_hamidi_portfolio.txt_24",
+      "file_name": "kamal_hamidi_portfolio.txt"
+    },
+    {
+      "question": "Quel outil est utilisé pour le développement frontend ?",
+      "gold_chunk_id": "kamal_hamidi_portfolio.txt_25",
+      "file_name": "kamal_hamidi_portfolio.txt"
+    },
+    {
+      "question": "Quel est l'adresse de portfolio de la personne?",
+      "gold_chunk_id": "kamal_hamidi_portfolio.txt_26",
+      "file_name": "kamal_hamidi_portfolio.txt"
+    },
+    {
+      "question": "Quel est le mois de la date de création du fichier ?",
+      "gold_chunk_id": "kamal_hamidi_portfolio.txt_27",
+      "file_name": "kamal_hamidi_portfolio.txt"
+    },
+    {
+      "question": "Quel est le but de la candidature de Kamal Hamidi?",
+      "gold_chunk_id": "lettre de motivation.pdf_0",
+      "file_name": "lettre de motivation.pdf"
+    },
+    {
+      "question": "Quels sont les domaines dans lesquels vous avez acquis des compétences?",
+      "gold_chunk_id": "lettre de motivation.pdf_1",
+      "file_name": "lettre de motivation.pdf"
+    },
+    {
+      "question": "Quels outils a-t-il utilisé pour le développement web ?",
+      "gold_chunk_id": "lettre de motivation.pdf_2",
+      "file_name": "lettre de motivation.pdf"
+    },
+    {
+      "question": "Quels sont les compétences techniques et professionnelles que le candidat développe ?",
+      "gold_chunk_id": "lettre de motivation.pdf_3",
+      "file_name": "lettre de motivation.pdf"
+    }
+  ]
+}

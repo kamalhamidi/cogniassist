@@ -1,0 +1,107 @@
+{
+  "n_chunks": 37,
+  "n_questions": 6,
+  "k": 5,
+  "ragas_summary": {
+    "faithfulness": 0.8,
+    "faithfulness_valid_n": 5,
+    "answer_relevancy": 0.508,
+    "answer_relevancy_valid_n": 6,
+    "context_precision": 0.94,
+    "context_precision_valid_n": 6,
+    "context_recall": 1.0,
+    "context_recall_valid_n": 6
+  },
+  "lexical_summary": {
+    "faithfulness": 0.06,
+    "answer_relevancy": 0.729,
+    "context_precision": 0.041,
+    "context_recall": 0.833
+  },
+  "samples": [
+    {
+      "question": "Quel est l'adresse email de Hamidi Kamal?",
+      "ground_truth": "Mo.kamal.hamidi@gmail.com",
+      "gold_chunk_id": "Kamal_HAMIDI_CV_fran.pdf_0",
+      "file_name": "Kamal_HAMIDI_CV_fran.pdf",
+      "answer": "mo.kamal.hamidi@gmail.com",
+      "lexical": {
+        "faithfulness": 0.012,
+        "answer_relevancy": 0.0,
+        "context_precision": 0.023,
+        "context_recall": 1.0
+      },
+      "n_contexts": 5
+    },
+    {
+      "question": "Quel langage a-t-il utilisé pour extraire et nettoyer les données applicatives?",
+      "ground_truth": "Python",
+      "gold_chunk_id": "Kamal_HAMIDI_CV_fran.pdf_1",
+      "file_name": "Kamal_HAMIDI_CV_fran.pdf",
+      "answer": "Le langage utilisé pour extraire et nettoyer les données applicatives est Python.",
+      "lexical": {
+        "faithfulness": 0.065,
+        "answer_relevancy": 1.0,
+        "context_precision": 0.051,
+        "context_recall": 1.0
+      },
+      "n_contexts": 5
+    },
+    {
+      "question": "Quelles sont les langages de programmation mentionnés dans l'extrait?",
+      "ground_truth": "Python, SQL, JavaScript, PHP",
+      "gold_chunk_id": "Kamal_HAMIDI_CV_fran.pdf_2",
+      "file_name": "Kamal_HAMIDI_CV_fran.pdf",
+      "answer": "Les langages de programmation mentionnés dans l'extrait sont JavaScript, TypeScript, PHP, Python, et SQL.",
+      "lexical": {
+        "faithfulness": 0.089,
+        "answer_relevancy": 0.8,
+        "context_precision": 0.025,
+        "context_recall": 1.0
+      },
+      "n_contexts": 5
+    },
+    {
+      "question": "Quel était le poste occupé par la personne à COCOPARK?",
+      "ground_truth": "Développeur Web / Designer",
+      "gold_chunk_id": "Kamal_HAMIDI_CV_fran.pdf_3",
+      "file_name": "Kamal_HAMIDI_CV_fran.pdf",
+      "answer": "La personne occupait le poste de Développeur Web / Designer à COCOPARK.",
+      "lexical": {
+        "faithfulness": 0.057,
+        "answer_relevancy": 0.667,
+        "context_precision": 0.023,
+        "context_recall": 1.0
+      },
+      "n_contexts": 5
+    },
+    {
+      "question": "Où a-t-il travaillé en tant que développeur web entre avril et juin 2023?",
+      "ground_truth": "Meknès, Maroc (à WeHELP)",
+      "gold_chunk_id": "Kamal_HAMIDI_CV_fran.pdf_4",
+      "file_name": "Kamal_HAMIDI_CV_fran.pdf",
+      "answer": "Il a travaillé en tant que développeur web entre avril et juin 2023 à WeHELP.",
+      "lexical": {
+        "faithfulness": 0.115,
+        "answer_relevancy": 1.0,
+        "context_precision": 0.101,
+        "context_recall": 1.0
+      },
+      "n_contexts": 5
+    },
+    {
+      "question": "Quel est le nom du site web de Kamal Hamidi?",
+      "ground_truth": "kamalhamidi.me",
+      "gold_chunk_id": "kamal_hamidi_portfolio.txt_0",
+      "file_name": "kamal_hamidi_portfolio.txt",
+      "answer": "Il n'y a pas de mention du nom du site web de Kamal Hamidi dans les contextes fournis.",
+      "lexical": {
+        "faithfulness": 0.024,
+        "answer_relevancy": 0.909,
+        "context_precision": 0.025,
+        "context_recall": 0.0
+      },
+      "n_contexts": 5
+    }
+  ]
+}

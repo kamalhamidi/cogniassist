@@ -6,6 +6,8 @@ pour configurer son profil cognitif initial. Adapte les questions
 selon le type d'utilisateur (Individual / Enterprise).
 """
 
+from pathlib import Path
+
 import streamlit as st
 
 
@@ -97,14 +99,12 @@ def show_onboarding_page() -> None:
     step = st.session_state.onboarding_step
 
     # Header
+    _logo_col = st.columns([1, 1, 1])[1]
+    with _logo_col:
+        st.image(str(Path(__file__).parent.parent / "assets" / "cogniassist_icon.png"), width=96)
     st.html(
         """
-        <div style="text-align:center; padding: 1.5rem 0 0.5rem;">
-            <div style="font-size:3rem;width:84px;height:84px;border-radius:24px;
-                        margin:0 auto 14px;display:flex;align-items:center;
-                        justify-content:center;
-                        background:linear-gradient(135deg,#6C5CE7,#A855F7);
-                        box-shadow:0 16px 36px rgba(108,92,231,.35);">🧠</div>
+        <div style="text-align:center; padding: 0 0 0.5rem;">
             <h1 style="font-size:2.4rem;font-weight:800;margin:0;color:#1E1B2E;">
                 Bienvenue sur CogniAssist</h1>
             <p style="font-size:1.05rem;color:#6B6880;margin-top:.4rem;">

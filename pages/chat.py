@@ -5,7 +5,11 @@ Interface conversationnelle avec streaming, suggestions contextuelles,
 feedback utilisateur et affichage des sources.
 """
 
+from pathlib import Path
+
 import streamlit as st
+
+ASSISTANT_AVATAR = str(Path(__file__).parent.parent / "assets" / "cogniassist_icon.png")
 
 
 @st.cache_resource
@@ -191,7 +195,7 @@ def show_chat_page() -> None:
 
         # Afficher l'historique
         for idx, message in enumerate(st.session_state.messages):
-            avatar = "👤" if message["role"] == "user" else "🧠"
+            avatar = "👤" if message["role"] == "user" else ASSISTANT_AVATAR
             with st.chat_message(message["role"], avatar=avatar):
                 st.markdown(message["content"])
 
@@ -338,7 +342,7 @@ def show_chat_page() -> None:
                 st.markdown(prompt)
 
             # Générer la réponse en streaming
-            with st.chat_message("assistant", avatar="🧠"):
+            with st.chat_message("assistant", avatar=ASSISTANT_AVATAR):
                 try:
                     full_text = st.write_stream(
                         pipeline.ask_stream(prompt, user_id=user_id)
