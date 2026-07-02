@@ -90,7 +90,7 @@ _LIGHT_VARS = """
     --ca-success-bg: #E9F8EF;
     --ca-warning: #D97706;
     --ca-danger: #DC2626;
-    --ca-user-bubble: linear-gradient(135deg, #EEEAFD, #F3EEFE);
+    --ca-user-bubble: linear-gradient(135deg, #5B4DC7 0%, #7B6AE0 50%, #9B7AF5 100%);
     --ca-shadow: 0 10px 30px rgba(30, 27, 46, 0.06);
     --ca-shadow-sm: 0 4px 14px rgba(30, 27, 46, 0.05);
     --ca-shadow-lg: 0 22px 48px rgba(108, 92, 231, 0.16);
@@ -114,7 +114,7 @@ _DARK_VARS = """
     --ca-success-bg: rgba(52, 211, 153, 0.12);
     --ca-warning: #FBBF24;
     --ca-danger: #F87171;
-    --ca-user-bubble: linear-gradient(135deg, rgba(142,123,255,0.22), rgba(168,85,247,0.18));
+    --ca-user-bubble: linear-gradient(135deg, #4A3CB0 0%, #6B5AD0 50%, #8B6AF0 100%);
     --ca-shadow: 0 10px 30px rgba(0, 0, 0, 0.40);
     --ca-shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.35);
     --ca-shadow-lg: 0 22px 48px rgba(0, 0, 0, 0.55);
@@ -193,8 +193,8 @@ p, span, label, li, .stMarkdown { color: var(--ca-ink); }
     position: absolute;
     right: 22px; top: 50%;
     transform: translateY(-50%);
-    height: 118px;
-    opacity: 0.42;
+    height: 130px;
+    opacity: 0.70;
     pointer-events: none;
     filter: drop-shadow(0 8px 18px rgba(0,0,0,0.18));
 }
@@ -452,25 +452,30 @@ button[data-testid="stBaseButton-primaryFormSubmit"]:hover {
     box-shadow: var(--ca-shadow-sm);
     max-width: 88%;
 }
-/* Bulle utilisateur (alignée à droite, dégradé doux) */
+/* Bulle utilisateur (alignée à droite, dégradé solide violet) */
 [data-testid="stChatMessage"]:has([aria-label="Chat message from user"]) {
     flex-direction: row-reverse;
 }
 [data-testid="stChatMessageContent"][aria-label="Chat message from user"] {
     background: var(--ca-user-bubble);
-    border: 1px solid rgba(108, 92, 231, 0.18);
+    border: none;
     border-radius: 18px 6px 18px 18px;
-    padding: 12px 18px;
-    box-shadow: var(--ca-shadow-sm);
+    padding: 14px 20px;
+    box-shadow: 0 8px 24px rgba(91, 77, 199, 0.30);
     max-width: 88%;
 }
-[data-testid="stChatMessageContent"][aria-label="Chat message from user"] p { color: var(--ca-ink); }
+[data-testid="stChatMessageContent"][aria-label="Chat message from user"] p { color: #FFFFFF !important; }
+[data-testid="stChatMessageContent"][aria-label="Chat message from user"] .stMarkdown p { color: #FFFFFF !important; }
 /* Avatars ronds */
 [data-testid="stChatMessage"] > div:first-child:not([data-testid]) {
     border-radius: 50%;
     background: var(--ca-surface);
     border: 1px solid var(--ca-border);
     box-shadow: var(--ca-shadow-sm);
+}
+/* Masquer l'avatar utilisateur pour un rendu plus épuré */
+[data-testid="stChatMessage"]:has([aria-label="Chat message from user"]) > div:first-child:not([data-testid]) {
+    display: none;
 }
 [data-testid="stChatInput"] {
     border-radius: 16px;
@@ -533,6 +538,156 @@ button[data-testid="stBaseButton-primaryFormSubmit"]:hover {
     border-color: var(--ca-primary) !important;
     background: rgba(108,92,231,0.06) !important;
     transform: none;
+}
+
+/* ── Héro de profil (conteneur clé : profile_hero) ──────────────── */
+.st-key-profile_hero {
+    background: linear-gradient(115deg, #6C5CE7 0%, #7E6AF0 50%, #9B6BF5 100%);
+    border-radius: 24px;
+    padding: 24px 30px;
+    box-shadow: 0 18px 40px rgba(108, 92, 231, 0.30);
+    margin-bottom: 16px;
+}
+.st-key-profile_hero p, .st-key-profile_hero span, .st-key-profile_hero label,
+.st-key-profile_hero h1, .st-key-profile_hero h2, .st-key-profile_hero h3 { color: #fff; }
+.ca-pf-avatar {
+    width: 116px; height: 116px; border-radius: 50%;
+    background: #fff; display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 4px; position: relative;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.20);
+}
+.ca-pf-avatar img { width: 76%; height: 76%; object-fit: contain; }
+.ca-pf-pencil {
+    position: absolute; right: 4px; bottom: 4px;
+    width: 30px; height: 30px; border-radius: 50%;
+    background: linear-gradient(135deg, #6C5CE7, #A855F7); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.78rem; border: 2px solid #fff;
+}
+.ca-pf-name { font-size: 1.9rem; font-weight: 800; margin: 0; line-height: 1.1; }
+.ca-pf-sub { font-size: 0.9rem; color: rgba(255, 255, 255, 0.85); margin: 4px 0 16px; }
+.ca-pf-badges { display: flex; gap: 12px; flex-wrap: wrap; }
+.ca-pf-badge {
+    display: flex; align-items: center; gap: 11px;
+    background: rgba(255, 255, 255, 0.16);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 14px; padding: 9px 16px;
+}
+.ca-pf-badge .ic {
+    font-size: 1rem; width: 30px; height: 30px; border-radius: 9px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255, 255, 255, 0.18);
+}
+.ca-pf-badge .lbl { font-size: 0.7rem; color: rgba(255, 255, 255, 0.8); line-height: 1.2; }
+.ca-pf-badge .val { font-size: 0.9rem; font-weight: 700; color: #fff; line-height: 1.2; }
+
+/* Bouton "Modifier le profil" (blanc) */
+.st-key-pf_edit_btn button[data-testid^="stBaseButton"] {
+    background: #fff !important; color: var(--ca-primary) !important;
+    border: none !important; font-weight: 700; border-radius: 12px;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+}
+.st-key-pf_edit_btn button[data-testid^="stBaseButton"] p { color: var(--ca-primary); }
+/* Sélecteur d'avatar (pilule blanche) */
+.st-key-pf_avatar_sel [data-baseweb="select"] > div {
+    background: #fff !important; border-radius: 12px !important; border: none !important;
+}
+.st-key-pf_avatar_sel [data-baseweb="select"] div,
+.st-key-pf_avatar_sel [data-baseweb="select"] span { color: var(--ca-ink) !important; }
+.st-key-pf_avatar_sel label { color: rgba(255, 255, 255, 0.92) !important; font-weight: 600; }
+/* Bouton "Mettre à jour l'avatar" (translucide) */
+.st-key-pf_avatar_btn button[data-testid^="stBaseButton"] {
+    background: rgba(255, 255, 255, 0.18) !important; color: #fff !important;
+    border: 1px solid rgba(255, 255, 255, 0.32) !important; font-weight: 700;
+    box-shadow: none;
+}
+.st-key-pf_avatar_btn button[data-testid^="stBaseButton"] p { color: #fff; }
+
+/* ── Carte « Astuces » (colonne droite des préférences) ─────────── */
+.ca-tips {
+    background: linear-gradient(180deg, rgba(108, 92, 231, 0.08), rgba(168, 85, 247, 0.05));
+    border: 1px solid var(--ca-border);
+    border-radius: 18px; padding: 18px 20px;
+}
+.ca-tips-art { width: 92px; display: block; margin: 2px auto 8px; }
+.ca-tips h4 { margin: 0 0 6px; font-size: 1rem; font-weight: 800; color: var(--ca-ink); }
+.ca-tips-lead { font-size: 0.82rem; color: var(--ca-muted); line-height: 1.45; }
+.ca-tip-row { display: flex; gap: 11px; align-items: flex-start; margin-top: 13px; }
+.ca-tip-ic {
+    width: 30px; height: 30px; border-radius: 9px; flex: 0 0 auto;
+    display: flex; align-items: center; justify-content: center; font-size: 0.85rem;
+}
+.ca-tip-txt { font-size: 0.79rem; color: var(--ca-muted); line-height: 1.42; }
+.ca-tip-txt b { color: var(--ca-ink); font-weight: 700; }
+
+/* Slider (niveau d'expertise) */
+[data-testid="stSlider"] [role="slider"] { background: var(--ca-primary) !important; }
+
+/* ── Barre de saisie type messagerie (formulaire chatbar) ───────── */
+[data-testid="stForm"]:has(.st-key-chatbar_q) {
+    background: var(--ca-surface);
+    border: 1px solid var(--ca-border);
+    border-radius: 22px;
+    box-shadow: var(--ca-shadow);
+    padding: 16px 18px 14px;
+    margin-top: 10px;
+}
+/* Champ de texte sans bordure, plus aéré */
+.st-key-chatbar_q [data-baseweb="base-input"],
+.st-key-chatbar_q [data-baseweb="input"],
+.st-key-chatbar_q .stTextInput div[data-baseweb="input"] {
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+.st-key-chatbar_q .stTextInput input {
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    font-size: 0.96rem;
+    padding: 6px 4px !important;
+}
+.st-key-chatbar_q .stTextInput input:focus { box-shadow: none !important; }
+/* Sélecteurs en pilule (modèle / mode RAG) */
+.st-key-chatbar_model [data-baseweb="select"] > div,
+.st-key-chatbar_rag [data-baseweb="select"] > div {
+    border-radius: 999px !important;
+    background: var(--ca-surface-2) !important;
+    border: 1px solid var(--ca-border) !important;
+    min-height: 36px !important;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--ca-ink);
+}
+.st-key-chatbar_model [data-baseweb="select"] svg,
+.st-key-chatbar_rag [data-baseweb="select"] svg { color: var(--ca-muted); }
+/* Bouton d'envoi rond (paper-plane) */
+[data-testid="stForm"]:has(.st-key-chatbar_q) button[data-testid="stBaseButton-primaryFormSubmit"] {
+    border-radius: 50% !important;
+    width: 50px !important;
+    height: 50px !important;
+    min-height: 50px !important;
+    padding: 0 !important;
+    font-size: 1.15rem;
+    margin-left: auto;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 10px 22px rgba(108, 92, 231, 0.38);
+}
+[data-testid="stForm"]:has(.st-key-chatbar_q) button[data-testid="stBaseButton-primaryFormSubmit"] p {
+    font-size: 1.15rem; line-height: 1;
+}
+
+/* Zone de discussion défilante */
+[data-testid="stVerticalBlockBorderWrapper"]:has(> div > [data-testid="stVerticalBlock"] > [data-testid="stElementContainer"] [data-testid="stChatMessage"]) {
+    background: transparent;
+}
+
+/* Popover « Ma pensée a évolué » : bouton discret */
+.st-key-clear_chat button[data-testid^="stBaseButton"],
+[data-testid="stPopover"] button[data-testid^="stBaseButton"] {
+    border-radius: 12px;
+    font-size: 0.84rem;
+    font-weight: 600;
 }
 
 /* Ligne de document (colonne droite) */

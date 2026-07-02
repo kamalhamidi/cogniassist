@@ -187,45 +187,7 @@ def show_dashboard_page() -> None:
 
     st.divider()
 
-    # ═══ Section 2 : Activité + Sujets ═══
-    col_left, col_right = st.columns(2)
-
-    with col_left:
-        st.subheader("📈 Activité récente")
-        recent = data["recent"]
-        if recent:
-            # Compter les interactions par jour
-            day_counts: Counter = Counter()
-            for r in recent:
-                date_str = r.get("created_at", "")[:10]
-                if date_str:
-                    day_counts[date_str] += 1
-
-            if day_counts:
-                import pandas as pd
-                df = pd.DataFrame(
-                    list(day_counts.items()), columns=["Date", "Interactions"]
-                ).sort_values("Date")
-                st.bar_chart(df.set_index("Date"))
-            else:
-                st.info("Aucune donnée d'activité")
-        else:
-            st.info("Aucune activité enregistrée")
-
-    with col_right:
-        st.subheader("🏷️ Sujets explorés")
-        topics = data["topics"]
-        if topics:
-            for i, topic in enumerate(topics):
-                weight = (len(topics) - i) / len(topics)
-                st.write(f"**{topic}**")
-                st.progress(weight)
-        else:
-            st.info("Commencez à poser des questions pour voir vos sujets")
-
-    st.divider()
-
-    # ═══ Section 3 : Profil de connaissances ACPE ═══
+    # ═══ Section 2 : Profil de connaissances ACPE ═══
     st.subheader("🧠 Profil de connaissances")
 
     acpe_data = _load_acpe_data(user_id)
@@ -287,6 +249,44 @@ def show_dashboard_page() -> None:
             "📋 Votre profil de connaissances se construira automatiquement "
             "au fil de vos interactions."
         )
+
+    st.divider()
+
+    # ═══ Section 3 : Activité + Sujets ═══
+    col_left, col_right = st.columns(2)
+
+    with col_left:
+        st.subheader("📈 Activité récente")
+        recent = data["recent"]
+        if recent:
+            # Compter les interactions par jour
+            day_counts: Counter = Counter()
+            for r in recent:
+                date_str = r.get("created_at", "")[:10]
+                if date_str:
+                    day_counts[date_str] += 1
+
+            if day_counts:
+                import pandas as pd
+                df = pd.DataFrame(
+                    list(day_counts.items()), columns=["Date", "Interactions"]
+                ).sort_values("Date")
+                st.bar_chart(df.set_index("Date"))
+            else:
+                st.info("Aucune donnée d'activité")
+        else:
+            st.info("Aucune activité enregistrée")
+
+    with col_right:
+        st.subheader("🏷️ Sujets explorés")
+        topics = data["topics"]
+        if topics:
+            for i, topic in enumerate(topics):
+                weight = (len(topics) - i) / len(topics)
+                st.write(f"**{topic}**")
+                st.progress(weight)
+        else:
+            st.info("Commencez à poser des questions pour voir vos sujets")
 
     st.divider()
 

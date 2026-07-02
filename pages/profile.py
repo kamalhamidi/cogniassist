@@ -7,19 +7,66 @@ de transparence et de confidentialité ACPE.
 """
 
 import json
+from pathlib import Path
+
 import streamlit as st
+
+_ICON_PATH = str(Path(__file__).parent.parent / "assets" / "cogniassist_icon.png")
+_AVATAR_NAMES = {
+    "🧠": "Cerveau", "👨‍🎓": "Étudiant", "👩‍🎓": "Étudiante", "🎓": "Diplômé",
+    "💡": "Idée", "🔬": "Science", "📚": "Études", "🤖": "Robot",
+}
+_MONTHS_FR = [
+    "janvier", "février", "mars", "avril", "mai", "juin", "juillet",
+    "août", "septembre", "octobre", "novembre", "décembre",
+]
+
+
+def _format_member_date(created_at: str) -> str:
+    """Formate une date ISO en « le D mois AAAA » (français)."""
+    if not created_at:
+        return "récemment"
+    try:
+        d = created_at[:10].split("-")
+        return f"le {int(d[2])} {_MONTHS_FR[int(d[1]) - 1]} {d[0]}"
+    except Exception:
+        return created_at[:10]
+
+
+def _render_tips_card() -> None:
+    """Affiche la carte « Astuces » de la colonne droite des préférences."""
+    from ui import img_data_uri
+    uri = img_data_uri(_ICON_PATH)
+    st.html(
+        f"""
+        <div class="ca-tips">
+            <img class="ca-tips-art" src="{uri}" alt="" />
+            <h4>💡 Astuces</h4>
+            <div class="ca-tips-lead">Personnalisez votre profil pour obtenir des
+                réponses plus pertinentes et adaptées à vos besoins.</div>
+            <div class="ca-tip-row">
+                <div class="ca-tip-ic" style="background:rgba(108,92,231,.14);">✏️</div>
+                <div class="ca-tip-txt"><b>Un niveau d'expertise précis</b>
+                    permet d'adapter la complexité.</div>
+            </div>
+            <div class="ca-tip-row">
+                <div class="ca-tip-ic" style="background:rgba(22,163,74,.14);">🎯</div>
+                <div class="ca-tip-txt"><b>Définissez vos objectifs</b>
+                    pour des suggestions ciblées.</div>
+            </div>
+            <div class="ca-tip-row">
+                <div class="ca-tip-ic" style="background:rgba(217,119,6,.16);">⭐</div>
+                <div class="ca-tip-txt"><b>Vos domaines d'intérêt</b>
+                    améliorent la qualité des réponses.</div>
+            </div>
+        </div>
+        """
+    )
 
 
 def show_profile_page() -> None:
     """Affiche la page de profil utilisateur."""
     user_id = st.session_state.get("user_id", "default")
-
-    from ui import page_header
-    page_header(
-        "Mon profil",
-        "Personnalisez votre expérience CogniAssist",
-        icon="👤",
-    )
 
     # Charger le profil
     try:
@@ -30,49 +77,75 @@ def show_profile_page() -> None:
         st.error(f"Erreur chargement profil : {e}")
         return
 
-    # ═══ En-tête profil ═══
-    col_avatar, col_info = st.columns([2, 8])
+    level_fr = {
+        "beginner": "Débutant", "intermediate": "Intermédiaire", "expert": "Expert",
+    }
+    user_type = profile.get("user_type", "individual")
+    type_label = "Individuel" if user_type == "individual" else "Entreprise"
+    role = profile.get("role") or "—"
+    member_since = _format_member_date(profile.get("created_at", ""))
+    avatar_glyph = profile.get("avatar", "🧠")
 
-    with col_avatar:
-        st.markdown(
-            f"<div style='font-size:80px;text-align:center'>"
-            f"{profile['avatar']}</div>",
-            unsafe_allow_html=True,
-        )
-        avatar_choice = st.selectbox(
-            "Changer l'avatar",
-            ["🧠", "👨‍🎓", "👩‍🎓", "🎓", "💡", "🔬", "📚", "🤖"],
-            index=0,
-            key="avatar_select",
-        )
-        if st.button("Mettre à jour l'avatar", key="btn_avatar"):
-            try:
-                mgr.update_profile(avatar=avatar_choice)
-                st.rerun()
-            except Exception as e:
-                st.error(f"Erreur : {e}")
+    # ═══ En-tête profil (héro dégradé) ═══
+    with st.container(key="profile_hero"):
+        c_av, c_main, c_btn = st.columns([2.3, 6.2, 2.2], vertical_alignment="center")
 
-    with col_info:
-        st.markdown(f"### {profile['name']}")
-        created = profile.get("created_at", "")[:10] if profile.get("created_at") else "—"
-        st.caption(f"Membre depuis {created}")
+        with c_av:
+            st.html(
+                f"""
+                <div class="ca-pf-avatar">
+                    <span style="font-size:62px;line-height:1;">{avatar_glyph}</span>
+                    <span class="ca-pf-pencil">✏️</span>
+                </div>
+                """
+            )
+            avatar_choice = st.selectbox(
+                "Changer l'avatar",
+                list(_AVATAR_NAMES.keys()),
+                index=0,
+                key="pf_avatar_sel",
+                format_func=lambda e: f"{e}  {_AVATAR_NAMES.get(e, '')}",
+            )
+            with st.container(key="pf_avatar_btn"):
+                if st.button("⬆️ Mettre à jour l'avatar", key="btn_avatar",
+                             use_container_width=True):
+                    try:
+                        mgr.update_profile(avatar=avatar_choice)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erreur : {e}")
 
-        level_labels = {
-            "beginner": "🟢 Débutant",
-            "intermediate": "🟡 Intermédiaire",
-            "expert": "🔴 Expert",
-        }
-        st.caption(f"Niveau : {level_labels.get(profile['expertise_level'], profile['expertise_level'])}")
+        with c_main:
+            st.html(
+                f"""
+                <h1 class="ca-pf-name">{profile['name']}</h1>
+                <div class="ca-pf-sub">Membre depuis {member_since}</div>
+                <div class="ca-pf-badges">
+                    <div class="ca-pf-badge">
+                        <span class="ic">⭐</span>
+                        <div><div class="lbl">Niveau</div>
+                            <div class="val">{level_fr.get(profile['expertise_level'],
+                                                            profile['expertise_level'])}</div></div>
+                    </div>
+                    <div class="ca-pf-badge">
+                        <span class="ic">👤</span>
+                        <div><div class="lbl">Type</div>
+                            <div class="val">{type_label}</div></div>
+                    </div>
+                    <div class="ca-pf-badge">
+                        <span class="ic">🛡️</span>
+                        <div><div class="lbl">Rôle</div>
+                            <div class="val">{role}</div></div>
+                    </div>
+                </div>
+                """
+            )
 
-        # ACPE badges
-        user_type = profile.get("user_type", "individual")
-        role = profile.get("role", "")
-        type_label = "👤 Individuel" if user_type == "individual" else "🏢 Entreprise"
-        st.caption(f"Type : {type_label}")
-        if role:
-            st.caption(f"Rôle : {role}")
-
-    st.divider()
+        with c_btn:
+            with st.container(key="pf_edit_btn"):
+                if st.button("✏️ Modifier le profil", key="btn_edit_profile",
+                             use_container_width=True):
+                    st.toast("Modifiez vos informations dans l'onglet Préférences ci-dessous ✏️")
 
     # ═══ Onglets ═══
     tab_prefs, tab_context, tab_privacy, tab_kmb, tab_identity = st.tabs([
@@ -82,69 +155,83 @@ def show_profile_page() -> None:
 
     # ─── Tab 1 : Préférences ───
     with tab_prefs:
-        with st.form("preferences_form"):
-            name = st.text_input("Nom", value=profile["name"])
+        col_form, col_tips = st.columns([7, 3], gap="large")
 
-            expertise = st.select_slider(
-                "Niveau d'expertise",
-                options=["beginner", "intermediate", "expert"],
-                value=profile["expertise_level"],
-                format_func=lambda x: {"beginner": "Débutant", "intermediate": "Intermédiaire", "expert": "Expert"}[x],
-            )
+        with col_form:
+            with st.form("preferences_form"):
+                name = st.text_input("Nom", value=profile["name"])
 
-            style_options = ["concise", "detailed", "step_by_step", "educational"]
-            style_captions = ["Court", "Détaillé", "Étape par étape", "Pédagogique"]
-            current_style = profile.get("response_style", "detailed")
-            style_index = style_options.index(current_style) if current_style in style_options else 1
+                expertise = st.select_slider(
+                    "Niveau d'expertise",
+                    options=["beginner", "intermediate", "expert"],
+                    value=profile["expertise_level"],
+                    format_func=lambda x: level_fr[x],
+                )
 
-            response_style = st.radio(
-                "Style de réponse",
-                options=style_options,
-                index=style_index,
-                horizontal=True,
-                captions=style_captions,
-            )
+                style_options = ["concise", "detailed", "step_by_step", "educational"]
+                style_labels = {
+                    "concise": "Concis", "detailed": "Détaillé",
+                    "step_by_step": "Step by step", "educational": "Éducational",
+                }
+                style_captions = ["Court", "Détaillé", "Étape par étape", "Pédagogique"]
+                current_style = profile.get("response_style", "detailed")
+                style_index = style_options.index(current_style) if current_style in style_options else 1
 
-            lang_options = ["fr", "en", "ar"]
-            lang_labels = {"fr": "Français", "en": "Anglais", "ar": "Arabe"}
-            current_lang = profile.get("language", "fr")
-            lang_index = lang_options.index(current_lang) if current_lang in lang_options else 0
+                response_style = st.radio(
+                    "Style de réponse",
+                    options=style_options,
+                    index=style_index,
+                    horizontal=True,
+                    captions=style_captions,
+                    format_func=lambda x: style_labels.get(x, x),
+                )
 
-            language = st.selectbox(
-                "Langue préférée",
-                options=lang_options,
-                index=lang_index,
-                format_func=lambda x: lang_labels.get(x, x),
-            )
+                lang_options = ["fr", "en", "ar"]
+                lang_labels = {"fr": "Français", "en": "Anglais", "ar": "Arabe"}
+                current_lang = profile.get("language", "fr")
+                lang_index = lang_options.index(current_lang) if current_lang in lang_options else 0
 
-            domains_input = st.text_input(
-                "Domaines d'intérêt (séparés par des virgules)",
-                value=", ".join(profile.get("domain_focus", [])),
-            )
-
-            goals = st.text_area(
-                "Mes objectifs d'apprentissage",
-                value=profile.get("goals", ""),
-                height=120,
-                placeholder="Ex : Maîtriser le RAG pour mon PFE, comprendre les LLMs...",
-            )
-
-            submitted = st.form_submit_button("💾 Sauvegarder", type="primary")
-            if submitted:
-                try:
-                    mgr.update_profile(name=name)
-                    mgr.update_preferences(
-                        expertise_level=expertise,
-                        response_style=response_style,
-                        language=language,
-                        domain_focus=[d.strip() for d in domains_input.split(",") if d.strip()],
-                        goals=goals,
+                col_lang, col_dom = st.columns(2)
+                with col_lang:
+                    language = st.selectbox(
+                        "Langue préférée",
+                        options=lang_options,
+                        index=lang_index,
+                        format_func=lambda x: lang_labels.get(x, x),
                     )
-                    st.success("✅ Profil mis à jour avec succès !")
-                    st.cache_data.clear()
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Erreur sauvegarde : {e}")
+                with col_dom:
+                    domains_input = st.text_input(
+                        "Domaines d'intérêt (séparés par des virgules)",
+                        value=", ".join(profile.get("domain_focus", [])),
+                    )
+
+                goals = st.text_area(
+                    "Mes objectifs d'apprentissage",
+                    value=profile.get("goals", ""),
+                    height=120,
+                    max_chars=500,
+                    placeholder="Ex : Maîtriser le RAG pour mon PFE, comprendre les LLMs...",
+                )
+
+                submitted = st.form_submit_button("💾 Sauvegarder", type="primary")
+                if submitted:
+                    try:
+                        mgr.update_profile(name=name)
+                        mgr.update_preferences(
+                            expertise_level=expertise,
+                            response_style=response_style,
+                            language=language,
+                            domain_focus=[d.strip() for d in domains_input.split(",") if d.strip()],
+                            goals=goals,
+                        )
+                        st.success("✅ Profil mis à jour avec succès !")
+                        st.cache_data.clear()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erreur sauvegarde : {e}")
+
+        with col_tips:
+            _render_tips_card()
 
     # ─── Tab 2 : Contexte RAG ───
     with tab_context:
