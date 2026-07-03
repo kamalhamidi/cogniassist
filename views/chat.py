@@ -155,18 +155,39 @@ def _render_assistant_extras(idx: int, message: dict, pipeline) -> None:
                 st.error(f"Erreur : {e}")
 
 
+def _stream_with_typing(stream, typing_placeholder) -> str:
+    """Affiche l'animation « en train d'écrire » jusqu'au premier token streamé."""
+    def _wrapped():
+        first = True
+        for token in stream:
+            if first:
+                typing_placeholder.empty()
+                first = False
+            yield token
+
+    return st.write_stream(_wrapped())
+
+
 def _generate_answer(prompt: str, user_id: str, pipeline) -> dict:
     """Construit le message assistant complet (sources, identité, transparence)."""
+    from ui import typing_indicator_html
+
     assistant_msg = {
         "role": "assistant", "content": "", "sources": [],
         "interaction_id": None, "identity_mode": False,
         "fidelity_score": None, "beliefs_used": [], "style_fragment": None,
     }
+    typing_ph = st.empty()
+    typing_ph.html(typing_indicator_html())
     try:
-        full_text = st.write_stream(pipeline.ask_stream(prompt, user_id=user_id))
+        stream = pipeline.ask_stream(prompt, user_id=user_id)
+        full_text = _stream_with_typing(stream, typing_ph)
     except Exception as e:
+        typing_ph.empty()
         full_text = f"Erreur : {e}"
         st.error(full_text)
+    finally:
+        typing_ph.empty()
     assistant_msg["content"] = full_text
 
     try:
@@ -183,8 +204,9 @@ def _generate_answer(prompt: str, user_id: str, pipeline) -> dict:
             except Exception:
                 assistant_msg["beliefs_used"] = []
             try:
-                from user.db import get_session
-                prof = pipeline.style_analyzer.get_profile(get_session())
+                from user.db import db_session
+                with db_session() as session:
+                    prof = pipeline.style_analyzer.get_profile(session)
                 if prof:
                     assistant_msg["style_fragment"] = prof.get("style_prompt_fragment")
             except Exception:
@@ -292,8 +314,8 @@ def show_chat_page() -> None:
                 else:
                     st.caption("Aucun document importé")
                     if st.button("📁 Importer un document", key="goto_upload"):
-                        st.session_state.current_page = "📁 Documents"
-                        st.rerun()
+                        from ui.layout import PAGE_FILES
+                        st.switch_page(PAGE_FILES["upload"])
             except Exception:
                 st.caption("Erreur de chargement")
 
@@ -429,6 +451,6 @@ def show_chat_page() -> None:
 
 
 if __name__ == "__main__":
-    st.session_state.current_page = "💬 Chat"
-    st.switch_page("app.py")
+    from ui.layout import PAGE_FILES
+    st.switch_page(PAGE_FILES["chat"])
 

@@ -7,6 +7,8 @@ pour la compatibilité avec Streamlit.
 """
 
 import logging
+from contextlib import contextmanager
+from functools import wraps
 from pathlib import Path
 
 from sqlalchemy import create_engine, Engine, text, inspect
@@ -66,6 +68,29 @@ def get_session() -> Session:
         _SessionFactory = sessionmaker(bind=get_engine())
 
     return _SessionFactory()
+
+
+@contextmanager
+def db_session():
+    """
+    Context manager that yields a SQLAlchemy session and always closes it.
+
+    Use this for all database access so connections are returned to the pool.
+    """
+    session = get_session()
+    try:
+        yield session
+    finally:
+        session.close()
+
+
+def uses_db_session(method):
+    """Decorator for manager methods: injects a scoped session after self."""
+    @wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with db_session() as session:
+            return method(self, session, *args, **kwargs)
+    return wrapper
 
 
 def init_db() -> None:

@@ -13,7 +13,7 @@ from typing import Optional
 
 from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey
 
-from user.db import Base, get_session
+from user.db import Base, uses_db_session
 
 logger = logging.getLogger("cogniassist.user")
 
@@ -77,10 +77,10 @@ class InteractionHistory:
             user_id: Identifiant de l'utilisateur.
         """
         self.user_id = user_id
-        self.session = get_session()
 
+    @uses_db_session
     def save_interaction(
-        self,
+        self, session,
         question: str,
         answer: str,
         sources: list[str],
@@ -109,17 +109,18 @@ class InteractionHistory:
                 chunks_used=chunks_used,
                 response_time_ms=response_time_ms,
             )
-            self.session.add(interaction)
-            self.session.commit()
-            self.session.refresh(interaction)
+            session.add(interaction)
+            session.commit()
+            session.refresh(interaction)
             logger.debug("Interaction #%d sauvegardée.", interaction.id)
             return interaction.id
         except Exception as e:
-            self.session.rollback()
+            session.rollback()
             logger.error("Erreur sauvegarde interaction : %s", e)
             return -1
 
-    def save_feedback(self, interaction_id: int, feedback: int) -> None:
+    @uses_db_session
+    def save_feedback(self, session, interaction_id: int, feedback: int) -> None:
         """
         Enregistre le feedback utilisateur pour une interaction.
 
@@ -129,7 +130,7 @@ class InteractionHistory:
         """
         try:
             interaction = (
-                self.session.query(Interaction)
+                session.query(Interaction)
                 .filter_by(id=interaction_id)
                 .first()
             )
@@ -137,12 +138,13 @@ class InteractionHistory:
                 logger.warning("Interaction #%d introuvable pour feedback.", interaction_id)
                 return
             interaction.feedback = feedback
-            self.session.commit()
+            session.commit()
         except Exception as e:
-            self.session.rollback()
+            session.rollback()
             logger.error("Erreur sauvegarde feedback : %s", e)
 
-    def get_recent_history(self, limit: int = 20) -> list[dict]:
+    @uses_db_session
+    def get_recent_history(self, session, limit: int = 20) -> list[dict]:
         """
         Retourne les dernières interactions de cet utilisateur.
 
@@ -153,7 +155,7 @@ class InteractionHistory:
             Liste de dictionnaires ordonnés par date décroissante.
         """
         interactions = (
-            self.session.query(Interaction)
+            session.query(Interaction)
             .filter_by(user_id=self.user_id)
             .order_by(Interaction.created_at.desc())
             .limit(limit)
@@ -161,7 +163,8 @@ class InteractionHistory:
         )
         return [self._to_dict(i) for i in interactions]
 
-    def get_interaction_stats(self) -> dict:
+    @uses_db_session
+    def get_interaction_stats(self, session) -> dict:
         """
         Retourne les statistiques globales des interactions.
 
@@ -169,7 +172,7 @@ class InteractionHistory:
             Dictionnaire avec total, temps moyen, feedback, et compteurs.
         """
         all_interactions = (
-            self.session.query(Interaction)
+            session.query(Interaction)
             .filter_by(user_id=self.user_id)
             .all()
         )
@@ -228,7 +231,8 @@ class InteractionHistory:
             "interactions_week": week_count,
         }
 
-    def get_frequent_topics(self, limit: int = 5) -> list[str]:
+    @uses_db_session
+    def get_frequent_topics(self, session, limit: int = 5) -> list[str]:
         """
         Extrait les sujets fréquents des questions passées.
 
@@ -242,7 +246,7 @@ class InteractionHistory:
             Liste des mots les plus fréquents.
         """
         interactions = (
-            self.session.query(Interaction)
+            session.query(Interaction)
             .filter_by(user_id=self.user_id)
             .order_by(Interaction.created_at.desc())
             .limit(50)
@@ -260,7 +264,8 @@ class InteractionHistory:
 
         return [word for word, _ in word_counter.most_common(limit)]
 
-    def search_history(self, query: str) -> list[dict]:
+    @uses_db_session
+    def search_history(self, session, query: str) -> list[dict]:
         """
         Recherche dans l'historique par correspondance partielle.
 
@@ -271,7 +276,7 @@ class InteractionHistory:
             Liste d'interactions correspondantes (max 10).
         """
         interactions = (
-            self.session.query(Interaction)
+            session.query(Interaction)
             .filter(
                 Interaction.user_id == self.user_id,
                 Interaction.question.ilike(f"%{query}%"),
@@ -282,16 +287,17 @@ class InteractionHistory:
         )
         return [self._to_dict(i) for i in interactions]
 
-    def clear_history(self) -> None:
+    @uses_db_session
+    def clear_history(self, session) -> None:
         """Supprime tout l'historique de cet utilisateur."""
         try:
-            self.session.query(Interaction).filter_by(
+            session.query(Interaction).filter_by(
                 user_id=self.user_id
             ).delete()
-            self.session.commit()
+            session.commit()
             logger.warning("Historique vidé pour l'utilisateur '%s'.", self.user_id)
         except Exception as e:
-            self.session.rollback()
+            session.rollback()
             logger.error("Erreur clear history : %s", e)
 
     @staticmethod

@@ -6,6 +6,7 @@ Expose le thème global (CSS) et les composants d'interface réutilisables
 cohérente sur toutes les pages.
 """
 
+from ui.layout import setup_page
 from ui.theme import (
     PALETTE,
     apply_theme,
@@ -21,11 +22,13 @@ from ui.theme import (
     status_pill,
     success_banner,
     suggestion_card,
+    typing_indicator_html,
 )
 
 __all__ = [
     "PALETTE",
     "apply_theme",
+    "setup_page",
     "chip",
     "chips",
     "empty_state",
@@ -38,4 +41,5 @@ __all__ = [
     "status_pill",
     "success_banner",
     "suggestion_card",
+    "typing_indicator_html",
 ]

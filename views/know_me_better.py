@@ -432,6 +432,6 @@ def render_section_5(data: dict, is_onboarding: bool) -> None:
 
 
 if __name__ == "__main__":
-    st.session_state.current_page = "💬 Chat"
-    st.switch_page("app.py")
+    from ui.layout import PAGE_FILES
+    st.switch_page(PAGE_FILES["chat"])
 

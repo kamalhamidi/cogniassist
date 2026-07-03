@@ -93,10 +93,7 @@ class RAGPipeline:
         try:
             from user.feedback_engine import FeedbackEngine
             from user.knowledge_engine import KnowledgeProfileEngine
-            from user.db import get_session
-
             self.feedback_engine = FeedbackEngine(
-                session=get_session(),
                 style_analyzer=self.style_analyzer,
                 belief_extractor=self.belief_extractor,
                 knowledge_engine=KnowledgeProfileEngine("default"),
@@ -183,34 +180,35 @@ class RAGPipeline:
         le profil de style en intégrant les corrections.
         """
         from user.identity_models import StyleCorrection
-        from user.db import get_session
+        from user.db import db_session
 
-        session = get_session()
-        try:
-            rec = StyleCorrection(
-                query=query, generated=generated, corrected=corrected,
-            )
-            session.add(rec)
-            session.commit()
-            logger.info("Correction stylistique enregistrée.")
-        except Exception as e:
-            session.rollback()
-            logger.error("Erreur enregistrement correction : %s", e)
+        with db_session() as session:
+            try:
+                rec = StyleCorrection(
+                    query=query, generated=generated, corrected=corrected,
+                )
+                session.add(rec)
+                session.commit()
+                logger.info("Correction stylistique enregistrée.")
+            except Exception as e:
+                session.rollback()
+                logger.error("Erreur enregistrement correction : %s", e)
+                return
 
-        # Recalcule (optionnel, non-bloquant) le profil de style
-        try:
-            if self.style_analyzer is not None:
-                texts = [
-                    c["text"]
-                    for c in self._vector_store.get_personal_writing_chunks()
-                ]
-                corrections = [r.corrected for r in session.query(StyleCorrection).all()]
-                all_texts = texts + corrections
-                if all_texts:
-                    metrics = self.style_analyzer.analyze(all_texts)
-                    self.style_analyzer.save_profile(metrics, session)
-        except Exception as e:
-            logger.debug("Recalcul du style après correction échoué : %s", e)
+            # Recalcule (optionnel, non-bloquant) le profil de style
+            try:
+                if self.style_analyzer is not None:
+                    texts = [
+                        c["text"]
+                        for c in self._vector_store.get_personal_writing_chunks()
+                    ]
+                    corrections = [r.corrected for r in session.query(StyleCorrection).all()]
+                    all_texts = texts + corrections
+                    if all_texts:
+                        metrics = self.style_analyzer.analyze(all_texts)
+                        self.style_analyzer.save_profile(metrics, session)
+            except Exception as e:
+                logger.debug("Recalcul du style après correction échoué : %s", e)
 
     # ── Layer 6 — Méthodes publiques de la boucle de rétroaction ──
 
@@ -291,13 +289,13 @@ class RAGPipeline:
             belief_ids = [b["id"] for b in beliefs if b.get("id")]
 
             import json
-            from user.db import get_session
+            from user.db import db_session
             from user.history import Interaction
-            session = get_session()
-            inter = session.query(Interaction).filter_by(id=interaction_id).first()
-            if inter is not None:
-                inter.beliefs_used_json = json.dumps(belief_ids)
-                session.commit()
+            with db_session() as session:
+                inter = session.query(Interaction).filter_by(id=interaction_id).first()
+                if inter is not None:
+                    inter.beliefs_used_json = json.dumps(belief_ids)
+                    session.commit()
         except Exception as e:
             logger.debug("_store_beliefs_used échoué : %s", e)
         return belief_ids

@@ -9,7 +9,7 @@ import json
 import logging
 from datetime import datetime
 
-from user.db import get_session
+from user.db import uses_db_session
 from user.profile import PersonalProfileData
 
 logger = logging.getLogger("cogniassist.user")
@@ -30,10 +30,10 @@ class KMBManager:
             user_id: Identifiant de l'utilisateur.
         """
         self.user_id = user_id
-        self.session = get_session()
         self._ensure_kmb_exists()
 
-    def _ensure_kmb_exists(self) -> None:
+    @uses_db_session
+    def _ensure_kmb_exists(self, session) -> None:
         """Crée l'enregistrement KMB vide s'il n'existe pas en base."""
         try:
             # S'assurer que l'utilisateur de base existe
@@ -41,21 +41,22 @@ class KMBManager:
             UserProfileManager(self.user_id)
 
             existing = (
-                self.session.query(PersonalProfileData)
+                session.query(PersonalProfileData)
                 .filter_by(user_id=self.user_id)
                 .first()
             )
             if existing is None:
                 kmb = PersonalProfileData(user_id=self.user_id)
-                self.session.add(kmb)
-                self.session.commit()
+                session.add(kmb)
+                session.commit()
                 logger.info("Enregistrement 'Know Me Better' créé pour '%s'.", self.user_id)
         except Exception as e:
-            self.session.rollback()
+            session.rollback()
             logger.error("Erreur création KMB pour '%s' : %s", self.user_id, e)
             raise
 
-    def get_kmb_data(self) -> dict:
+    @uses_db_session
+    def get_kmb_data(self, session) -> dict:
         """
         Récupère les données KMB complètes.
 
@@ -63,7 +64,7 @@ class KMBManager:
             Dictionnaire des réponses et état de complétion.
         """
         kmb = (
-            self.session.query(PersonalProfileData)
+            session.query(PersonalProfileData)
             .filter_by(user_id=self.user_id)
             .first()
         )
@@ -73,7 +74,8 @@ class KMBManager:
             return res
         return {}
 
-    def update_kmb_field(self, field_name: str, value: any) -> int:
+    @uses_db_session
+    def update_kmb_field(self, session, field_name: str, value: any) -> int:
         """
         Met à jour un champ KMB individuel avec recalcul de complétion.
 
@@ -86,7 +88,7 @@ class KMBManager:
         """
         try:
             kmb = (
-                self.session.query(PersonalProfileData)
+                session.query(PersonalProfileData)
                 .filter_by(user_id=self.user_id)
                 .first()
             )
@@ -108,36 +110,38 @@ class KMBManager:
             kmb.completion_percentage = self._calculate_completion(kmb)
             kmb.updated_at = datetime.utcnow()
             
-            self.session.commit()
+            session.commit()
             return kmb.completion_percentage
         except Exception as e:
-            self.session.rollback()
+            session.rollback()
             logger.error("Erreur mise à jour KMB champ '%s' : %s", field_name, e)
             raise
 
-    def has_seen_kmb_onboarding(self) -> bool:
+    @uses_db_session
+    def has_seen_kmb_onboarding(self, session) -> bool:
         """Vérifie si l'onboarding KMB a été vu ou ignoré."""
         kmb = (
-            self.session.query(PersonalProfileData)
+            session.query(PersonalProfileData)
             .filter_by(user_id=self.user_id)
             .first()
         )
         return kmb.kmb_onboarding_seen if kmb else False
 
-    def mark_kmb_onboarding_seen(self) -> None:
+    @uses_db_session
+    def mark_kmb_onboarding_seen(self, session) -> None:
         """Marque l'onboarding KMB comme complété ou vu (pour ne plus l'afficher)."""
         try:
             kmb = (
-                self.session.query(PersonalProfileData)
+                session.query(PersonalProfileData)
                 .filter_by(user_id=self.user_id)
                 .first()
             )
             if kmb:
                 kmb.kmb_onboarding_seen = True
-                self.session.commit()
+                session.commit()
                 logger.info("Onboarding KMB marqué comme vu pour '%s'.", self.user_id)
         except Exception as e:
-            self.session.rollback()
+            session.rollback()
             logger.error("Erreur mark_kmb_onboarding_seen : %s", e)
 
     def _calculate_completion(self, kmb: PersonalProfileData) -> int:

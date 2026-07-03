@@ -164,6 +164,10 @@ p, span, label, li, .stMarkdown { color: var(--ca-ink); }
     from { opacity: 0; transform: translateY(8px); }
     to   { opacity: 1; transform: translateY(0); }
 }
+@keyframes caTypingDot {
+    0%, 80%, 100% { transform: translateY(0); opacity: 0.35; }
+    40%           { transform: translateY(-5px); opacity: 1; }
+}
 .block-container > div > div[data-testid="stVerticalBlock"] { animation: caFadeUp 0.45s ease both; }
 
 /* ── En-tête héro ───────────────────────────────────────────────── */
@@ -466,6 +470,36 @@ button[data-testid="stBaseButton-primaryFormSubmit"]:hover {
 }
 [data-testid="stChatMessageContent"][aria-label="Chat message from user"] p { color: #FFFFFF !important; }
 [data-testid="stChatMessageContent"][aria-label="Chat message from user"] .stMarkdown p { color: #FFFFFF !important; }
+/* Indicateur « en train d'écrire » */
+.ca-typing-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 2px 0;
+    min-height: 24px;
+}
+.ca-typing-label {
+    font-size: 0.82rem;
+    color: var(--ca-muted);
+    font-weight: 500;
+    letter-spacing: 0.01em;
+}
+.ca-typing-dots {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding-bottom: 1px;
+}
+.ca-typing-dots span {
+    display: block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--ca-primary);
+    animation: caTypingDot 1.2s ease-in-out infinite;
+}
+.ca-typing-dots span:nth-child(2) { animation-delay: 0.15s; }
+.ca-typing-dots span:nth-child(3) { animation-delay: 0.3s; }
 /* Avatars ronds */
 [data-testid="stChatMessage"] > div:first-child:not([data-testid]) {
     border-radius: 50%;
@@ -796,10 +830,24 @@ footer { visibility: hidden; }
 # API publique
 # ═══════════════════════════════════════════════════════════════════════
 
+def _build_theme_css(mode: str) -> str:
+    """Construit le bloc CSS complet pour un mode (mis en cache)."""
+    variables = _DARK_VARS if mode == "dark" else _LIGHT_VARS
+    return f"<style>:root {{{variables}}}\n{_COMPONENT_CSS}</style>"
+
+
+@st.cache_data(show_spinner=False)
+def _cached_theme_css(mode: str) -> str:
+    """Cache le CSS par mode pour éviter de reconstruire à chaque rerun."""
+    return _build_theme_css(mode)
+
+
 def apply_theme() -> None:
     """Injecte le thème global (variables + composants). À appeler tôt dans `main()`."""
-    variables = _DARK_VARS if get_theme_mode() == "dark" else _LIGHT_VARS
-    st.html(f"<style>:root {{{variables}}}\n{_COMPONENT_CSS}</style>")
+    mode = get_theme_mode()
+    if st.session_state.get("_ca_theme_mode") != mode:
+        st.session_state._ca_theme_mode = mode
+    st.html(_cached_theme_css(mode))
 
 
 def page_header(
@@ -962,3 +1010,15 @@ def suggestion_card(title: str, text: str, icon: str = "🎯") -> None:
         </div>
         """
     )
+
+
+def typing_indicator_html(label: str = "CogniAssist écrit") -> str:
+    """Retourne le HTML de l'indicateur « en train d'écrire » (points animés)."""
+    return f"""
+    <div class="ca-typing-indicator" aria-live="polite" aria-label="{label}">
+        <span class="ca-typing-label">{label}</span>
+        <span class="ca-typing-dots" aria-hidden="true">
+            <span></span><span></span><span></span>
+        </span>
+    </div>
+    """

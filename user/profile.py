@@ -16,7 +16,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 
-from user.db import Base, get_session
+from user.db import Base, uses_db_session
 
 logger = logging.getLogger("cogniassist.user")
 
@@ -105,30 +105,31 @@ class UserProfileManager:
             user_id: Identifiant de l'utilisateur.
         """
         self.user_id = user_id
-        self.session = get_session()
         self._ensure_user_exists()
 
-    def _ensure_user_exists(self) -> None:
+    @uses_db_session
+    def _ensure_user_exists(self, session) -> None:
         """Crée le profil et les préférences par défaut si inexistants."""
         try:
             existing = (
-                self.session.query(UserProfile)
+                session.query(UserProfile)
                 .filter_by(user_id=self.user_id)
                 .first()
             )
             if existing is None:
                 profile = UserProfile(user_id=self.user_id)
                 prefs = UserPreferences(user_id=self.user_id)
-                self.session.add(profile)
-                self.session.add(prefs)
-                self.session.commit()
+                session.add(profile)
+                session.add(prefs)
+                session.commit()
                 logger.info("Profil créé pour l'utilisateur '%s'.", self.user_id)
         except Exception as e:
-            self.session.rollback()
+            session.rollback()
             logger.error("Erreur création profil '%s' : %s", self.user_id, e)
             raise
 
-    def get_profile(self) -> dict:
+    @uses_db_session
+    def get_profile(self, session) -> dict:
         """
         Retourne le profil complet de l'utilisateur.
 
@@ -136,12 +137,12 @@ class UserProfileManager:
             Dictionnaire avec toutes les informations du profil et préférences.
         """
         profile = (
-            self.session.query(UserProfile)
+            session.query(UserProfile)
             .filter_by(user_id=self.user_id)
             .first()
         )
         prefs = (
-            self.session.query(UserPreferences)
+            session.query(UserPreferences)
             .filter_by(user_id=self.user_id)
             .first()
         )
@@ -177,7 +178,8 @@ class UserProfileManager:
             "adaptive_learning_enabled": profile.adaptive_learning_enabled if profile else True,
         }
 
-    def update_profile(self, **kwargs) -> None:
+    @uses_db_session
+    def update_profile(self, session, **kwargs) -> None:
         """
         Met à jour les champs du profil utilisateur.
 
@@ -192,7 +194,7 @@ class UserProfileManager:
         }
         try:
             profile = (
-                self.session.query(UserProfile)
+                session.query(UserProfile)
                 .filter_by(user_id=self.user_id)
                 .first()
             )
@@ -203,12 +205,13 @@ class UserProfileManager:
                     if key == "organization_data" and isinstance(value, dict):
                         value = json.dumps(value, ensure_ascii=False)
                     setattr(profile, key, value)
-                self.session.commit()
+                session.commit()
         except Exception as e:
-            self.session.rollback()
+            session.rollback()
             logger.error("Erreur update profil : %s", e)
 
-    def update_preferences(self, **kwargs) -> None:
+    @uses_db_session
+    def update_preferences(self, session, **kwargs) -> None:
         """
         Met à jour les préférences utilisateur.
 
@@ -220,7 +223,7 @@ class UserProfileManager:
         allowed = {"language", "response_style", "expertise_level", "goals", "domain_focus"}
         try:
             prefs = (
-                self.session.query(UserPreferences)
+                session.query(UserPreferences)
                 .filter_by(user_id=self.user_id)
                 .first()
             )
@@ -231,9 +234,9 @@ class UserProfileManager:
                     if key == "domain_focus" and isinstance(value, list):
                         value = ",".join(value)
                     setattr(prefs, key, value)
-                self.session.commit()
+                session.commit()
         except Exception as e:
-            self.session.rollback()
+            session.rollback()
             logger.error("Erreur update préférences : %s", e)
 
     def get_personalization_context(self) -> str:
@@ -273,7 +276,8 @@ class UserProfileManager:
 
         return "\n".join(parts)
 
-    def complete_onboarding(self, onboarding_data: dict) -> None:
+    @uses_db_session
+    def complete_onboarding(self, session, onboarding_data: dict) -> None:
         """
         Finalise l'onboarding en sauvegardant toutes les données collectées.
 
@@ -283,7 +287,7 @@ class UserProfileManager:
         """
         try:
             profile = (
-                self.session.query(UserProfile)
+                session.query(UserProfile)
                 .filter_by(user_id=self.user_id)
                 .first()
             )
@@ -304,7 +308,7 @@ class UserProfileManager:
 
             # Préférences
             prefs = (
-                self.session.query(UserPreferences)
+                session.query(UserPreferences)
                 .filter_by(user_id=self.user_id)
                 .first()
             )
@@ -328,17 +332,18 @@ class UserProfileManager:
                     else:
                         prefs.domain_focus = interests
 
-            self.session.commit()
+            session.commit()
             logger.info(
                 "Onboarding complété pour '%s' (type=%s).",
                 self.user_id, profile.user_type,
             )
         except Exception as e:
-            self.session.rollback()
+            session.rollback()
             logger.error("Erreur complete_onboarding : %s", e)
             raise
 
-    def reset_acpe_data(self) -> None:
+    @uses_db_session
+    def reset_acpe_data(self, session) -> None:
         """
         Réinitialise toutes les données ACPE (knowledge, usage, progressive).
 
@@ -347,22 +352,23 @@ class UserProfileManager:
         try:
             from user.acpe_models import KnowledgeProfile, UsagePattern, ProgressivePrompt
 
-            self.session.query(KnowledgeProfile).filter_by(
+            session.query(KnowledgeProfile).filter_by(
                 user_id=self.user_id
             ).delete()
-            self.session.query(UsagePattern).filter_by(
+            session.query(UsagePattern).filter_by(
                 user_id=self.user_id
             ).delete()
-            self.session.query(ProgressivePrompt).filter_by(
+            session.query(ProgressivePrompt).filter_by(
                 user_id=self.user_id
             ).delete()
-            self.session.commit()
+            session.commit()
             logger.info("Données ACPE réinitialisées pour '%s'.", self.user_id)
         except Exception as e:
-            self.session.rollback()
+            session.rollback()
             logger.error("Erreur reset ACPE : %s", e)
 
-    def export_profile_data(self) -> dict:
+    @uses_db_session
+    def export_profile_data(self, session) -> dict:
         """
         Exporte toutes les données du profil utilisateur en un seul dict.
 
@@ -376,12 +382,12 @@ class UserProfileManager:
             from user.acpe_models import KnowledgeProfile, UsagePattern
             knowledge = [
                 kp.to_dict()
-                for kp in self.session.query(KnowledgeProfile)
+                for kp in session.query(KnowledgeProfile)
                 .filter_by(user_id=self.user_id).all()
             ]
             usage = [
                 {"metric": up.metric_name, "value": up.get_value()}
-                for up in self.session.query(UsagePattern)
+                for up in session.query(UsagePattern)
                 .filter_by(user_id=self.user_id).all()
             ]
         except Exception:
@@ -395,8 +401,9 @@ class UserProfileManager:
             "exported_at": datetime.utcnow().isoformat(),
         }
 
+    @uses_db_session
     def register_document(
-        self, file_name: str, file_type: str, chunk_count: int,
+        self, session, file_name: str, file_type: str, chunk_count: int,
     ) -> None:
         """
         Enregistre ou met à jour un document pour cet utilisateur.
@@ -408,7 +415,7 @@ class UserProfileManager:
         """
         try:
             existing = (
-                self.session.query(DocumentAccess)
+                session.query(DocumentAccess)
                 .filter_by(user_id=self.user_id, file_name=file_name)
                 .first()
             )
@@ -422,14 +429,15 @@ class UserProfileManager:
                     file_type=file_type,
                     chunk_count=chunk_count,
                 )
-                self.session.add(doc)
-            self.session.commit()
+                session.add(doc)
+            session.commit()
             logger.info("Document '%s' enregistré pour '%s'.", file_name, self.user_id)
         except Exception as e:
-            self.session.rollback()
+            session.rollback()
             logger.error("Erreur enregistrement document : %s", e)
 
-    def record_document_access(self, file_name: str) -> None:
+    @uses_db_session
+    def record_document_access(self, session, file_name: str) -> None:
         """
         Incrémente le compteur d'accès et met à jour la date de dernier accès.
 
@@ -438,19 +446,20 @@ class UserProfileManager:
         """
         try:
             doc = (
-                self.session.query(DocumentAccess)
+                session.query(DocumentAccess)
                 .filter_by(user_id=self.user_id, file_name=file_name)
                 .first()
             )
             if doc:
                 doc.access_count = (doc.access_count or 0) + 1
                 doc.last_accessed = datetime.utcnow()
-                self.session.commit()
+                session.commit()
         except Exception as e:
-            self.session.rollback()
+            session.rollback()
             logger.error("Erreur record access : %s", e)
 
-    def store_document_summary(self, file_name: str, summary: str) -> None:
+    @uses_db_session
+    def store_document_summary(self, session, file_name: str, summary: str) -> None:
         """
         Sauvegarde le résumé généré pour un document.
 
@@ -460,18 +469,19 @@ class UserProfileManager:
         """
         try:
             doc = (
-                self.session.query(DocumentAccess)
+                session.query(DocumentAccess)
                 .filter_by(user_id=self.user_id, file_name=file_name)
                 .first()
             )
             if doc:
                 doc.summary = summary
-                self.session.commit()
+                session.commit()
         except Exception as e:
-            self.session.rollback()
+            session.rollback()
             logger.error("Erreur store summary : %s", e)
 
-    def get_user_documents(self) -> list[dict]:
+    @uses_db_session
+    def get_user_documents(self, session) -> list[dict]:
         """
         Retourne tous les documents de cet utilisateur.
 
@@ -479,7 +489,7 @@ class UserProfileManager:
             Liste de dictionnaires ordonnés par date d'upload décroissante.
         """
         docs = (
-            self.session.query(DocumentAccess)
+            session.query(DocumentAccess)
             .filter_by(user_id=self.user_id)
             .order_by(DocumentAccess.upload_date.desc())
             .all()
@@ -497,7 +507,8 @@ class UserProfileManager:
             for d in docs
         ]
 
-    def delete_document(self, file_name: str) -> None:
+    @uses_db_session
+    def delete_document(self, session, file_name: str) -> None:
         """
         Supprime un document et ses chunks du vectorstore.
 
@@ -506,13 +517,13 @@ class UserProfileManager:
         """
         try:
             doc = (
-                self.session.query(DocumentAccess)
+                session.query(DocumentAccess)
                 .filter_by(user_id=self.user_id, file_name=file_name)
                 .first()
             )
             if doc:
-                self.session.delete(doc)
-                self.session.commit()
+                session.delete(doc)
+                session.commit()
 
             # Supprimer aussi les chunks de ChromaDB
             from vectorstore.store import VectorStore
@@ -521,7 +532,7 @@ class UserProfileManager:
 
             logger.info("Document '%s' supprimé.", file_name)
         except Exception as e:
-            self.session.rollback()
+            session.rollback()
             logger.error("Erreur suppression document : %s", e)
 
 

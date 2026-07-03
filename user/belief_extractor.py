@@ -20,7 +20,7 @@ from datetime import date, datetime
 from langchain_core.messages import HumanMessage
 
 from config import settings
-from user.db import get_session
+from user.db import uses_db_session
 from user.identity_models import BeliefStore
 
 logger = logging.getLogger("cogniassist.user")
@@ -66,23 +66,23 @@ Règles strictes:
 - Maximum 3 beliefs par chunk
 - Le topic doit être spécifique, pas générique ("apprentissage par renforcement" pas "IA")"""
 
-    def __init__(self, llm, embedder, session=None) -> None:
+    def __init__(self, llm, embedder) -> None:
         """
         Args:
             llm: Instance ChatOllama existante (depuis RAGPipeline).
             embedder: Instance EmbeddingManager.
-            session: Session SQLAlchemy (optionnelle — créée sinon).
+            
         """
         self.llm = llm
         self.embedder = embedder
-        self.session = session or get_session()
 
     # ─────────────────────────────────────────────────────────────────
     # Extraction
     # ─────────────────────────────────────────────────────────────────
 
+    @uses_db_session
     def extract_from_chunk(
-        self,
+        self, session,
         chunk_text: str,
         chunk_id: str,
         date_written: date | None = None,
@@ -132,8 +132,8 @@ Règles strictes:
                 logger.warning("Embedding croyance échoué : %s", e)
                 embedding = []
 
-            conflict_id = self._check_conflict(topic, position, embedding)
-            self._save_belief(
+            conflict_id = self._check_conflict(session, topic, position, embedding)
+            self._save_belief(session,
                 topic=topic,
                 position=position,
                 confidence=confidence,
@@ -207,7 +207,7 @@ Règles strictes:
     # ─────────────────────────────────────────────────────────────────
 
     def _check_conflict(
-        self, topic: str, new_position: str, new_embedding: list[float] | None = None,
+        self, session, topic: str, new_position: str, new_embedding: list[float] | None = None,
     ) -> int | None:
         """
         Vérifie s'il existe déjà une croyance sur le même sujet avec une
@@ -232,7 +232,7 @@ Règles strictes:
 
         try:
             existing = (
-                self.session.query(BeliefStore)
+                session.query(BeliefStore)
                 .filter(BeliefStore.status.in_(["active", "user_confirmed"]))
                 .all()
             )
@@ -266,7 +266,7 @@ Règles strictes:
         return overlap > 0.7
 
     def _save_belief(
-        self,
+        self, session,
         topic: str,
         position: str,
         confidence: str,
@@ -295,12 +295,12 @@ Règles strictes:
             if embedding:
                 belief.set_embedding(embedding)
 
-            self.session.add(belief)
+            session.add(belief)
 
             # Marquer la croyance existante en conflit
             if conflict_id is not None:
                 existing = (
-                    self.session.query(BeliefStore)
+                    session.query(BeliefStore)
                     .filter_by(id=conflict_id)
                     .first()
                 )
@@ -308,16 +308,17 @@ Règles strictes:
                     existing.status = "conflicted"
                     existing.updated_at = datetime.utcnow()
 
-            self.session.commit()
+            session.commit()
         except Exception as e:
-            self.session.rollback()
+            session.rollback()
             logger.error("Erreur sauvegarde croyance : %s", e)
 
     # ─────────────────────────────────────────────────────────────────
     # Lecture / récupération
     # ─────────────────────────────────────────────────────────────────
 
-    def get_beliefs_for_topic(self, query: str, top_k: int = 3) -> list[dict]:
+    @uses_db_session
+    def get_beliefs_for_topic(self, session, query: str, top_k: int = 3) -> list[dict]:
         """
         Au moment d'une requête : trouve les croyances les plus pertinentes.
 
@@ -339,7 +340,7 @@ Règles strictes:
 
         try:
             beliefs = (
-                self.session.query(BeliefStore)
+                session.query(BeliefStore)
                 .filter(BeliefStore.status.in_(["active", "user_confirmed"]))
                 .all()
             )
@@ -366,11 +367,12 @@ Règles strictes:
             })
         return results
 
-    def get_all_beliefs(self) -> list[dict]:
+    @uses_db_session
+    def get_all_beliefs(self, session) -> list[dict]:
         """Retourne toutes les croyances triées par updated_at DESC (pour l'UI)."""
         try:
             beliefs = (
-                self.session.query(BeliefStore)
+                session.query(BeliefStore)
                 .order_by(BeliefStore.updated_at.desc())
                 .all()
             )
@@ -379,14 +381,15 @@ Règles strictes:
             logger.error("Erreur lecture croyances : %s", e)
             return []
 
-    def resolve_conflict(self, belief_id_keep: int, belief_id_drop: int) -> None:
+    @uses_db_session
+    def resolve_conflict(self, session, belief_id_keep: int, belief_id_drop: int) -> None:
         """L'utilisateur choisit la croyance courante. Met à jour les statuts."""
         try:
             keep = (
-                self.session.query(BeliefStore).filter_by(id=belief_id_keep).first()
+                session.query(BeliefStore).filter_by(id=belief_id_keep).first()
             )
             drop = (
-                self.session.query(BeliefStore).filter_by(id=belief_id_drop).first()
+                session.query(BeliefStore).filter_by(id=belief_id_drop).first()
             )
             if keep:
                 keep.status = "user_confirmed"
@@ -394,13 +397,13 @@ Règles strictes:
             if drop:
                 drop.status = "superseded"
                 drop.updated_at = datetime.utcnow()
-            self.session.commit()
+            session.commit()
             logger.info(
                 "Conflit résolu : #%s conservée, #%s remplacée.",
                 belief_id_keep, belief_id_drop,
             )
         except Exception as e:
-            self.session.rollback()
+            session.rollback()
             logger.error("Erreur résolution conflit : %s", e)
 
     # ─────────────────────────────────────────────────────────────────

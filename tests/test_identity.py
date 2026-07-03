@@ -108,12 +108,10 @@ def test_style_analyzer_formality():
 def test_belief_extractor_json_parse():
     """Un JSON malformé renvoyé par le LLM ne doit pas crasher → []."""
     from user.belief_extractor import BeliefExtractor
-    from user.db import get_session
 
     extractor = BeliefExtractor(
         llm=FakeLLM(response="ceci n'est pas du JSON valide !!!"),
         embedder=FakeEmbedder(),
-        session=get_session(),
     )
     result = extractor.extract_from_chunk("un texte quelconque", "chunk_1")
     assert result == []
@@ -122,12 +120,10 @@ def test_belief_extractor_json_parse():
 def test_belief_extractor_no_opinion_text():
     """Texte factuel neutre → 0 croyance extraite."""
     from user.belief_extractor import BeliefExtractor
-    from user.db import get_session
 
     extractor = BeliefExtractor(
         llm=FakeLLM(response='{"beliefs": []}'),
         embedder=FakeEmbedder(),
-        session=get_session(),
     )
     result = extractor.extract_from_chunk(
         "L'eau bout à 100 degrés Celsius au niveau de la mer.", "chunk_2",
@@ -139,7 +135,6 @@ def test_belief_extractor_no_opinion_text():
 def test_belief_extractor_saves_belief():
     """Une réponse LLM valide doit sauvegarder une croyance active."""
     from user.belief_extractor import BeliefExtractor
-    from user.db import get_session
 
     response = (
         '{"beliefs": [{"topic": "apprentissage par renforcement", '
@@ -148,7 +143,6 @@ def test_belief_extractor_saves_belief():
     extractor = BeliefExtractor(
         llm=FakeLLM(response=response),
         embedder=FakeEmbedder(),
-        session=get_session(),
     )
     saved = extractor.extract_from_chunk("texte avec opinion", "chunk_3")
     assert len(saved) == 1
@@ -169,16 +163,12 @@ def test_identity_prompt_builder_fallback():
     from user.belief_extractor import BeliefExtractor
     from user.identity_prompt_builder import IdentityPromptBuilder
     from user import get_user_manager
-    from user.db import get_session
-
-    session = get_session()
     builder = IdentityPromptBuilder(
         style_analyzer=StyleAnalyzer(),
         belief_extractor=BeliefExtractor(
-            llm=FakeLLM(), embedder=FakeEmbedder(), session=session,
+            llm=FakeLLM(), embedder=FakeEmbedder(),
         ),
         profile_manager=get_user_manager("default"),
-        session=session,
     )
 
     prompt = builder.build_system_prompt("Quelle est ta position sur l'IA ?")
@@ -195,16 +185,12 @@ def test_identity_mode_ready_false():
     from user.belief_extractor import BeliefExtractor
     from user.identity_prompt_builder import IdentityPromptBuilder
     from user import get_user_manager
-    from user.db import get_session
-
-    session = get_session()
     builder = IdentityPromptBuilder(
         style_analyzer=StyleAnalyzer(),
         belief_extractor=BeliefExtractor(
-            llm=FakeLLM(), embedder=FakeEmbedder(), session=session,
+            llm=FakeLLM(), embedder=FakeEmbedder(),
         ),
         profile_manager=get_user_manager("default"),
-        session=session,
     )
     assert builder.is_identity_mode_ready() is False
 
@@ -216,32 +202,29 @@ def test_identity_mode_ready_true():
     from user.identity_prompt_builder import IdentityPromptBuilder
     from user.identity_models import BeliefStore
     from user import get_user_manager
-    from user.db import get_session
+    from user.db import db_session
     from config import settings
 
-    session = get_session()
     analyzer = StyleAnalyzer()
 
-    # Sauvegarder un profil de style
-    metrics = analyzer.analyze(["Une phrase de test pour générer un profil."])
-    analyzer.save_profile(metrics, session)
+    with db_session() as session:
+        metrics = analyzer.analyze(["Une phrase de test pour générer un profil."])
+        analyzer.save_profile(metrics, session)
 
-    # Insérer le nombre minimal de croyances
-    for i in range(settings.MIN_BELIEFS_FOR_IDENTITY_MODE):
-        b = BeliefStore(
-            topic=f"sujet {i}", position=f"position {i}",
-            confidence="high", status="active",
-        )
-        session.add(b)
-    session.commit()
+        for i in range(settings.MIN_BELIEFS_FOR_IDENTITY_MODE):
+            b = BeliefStore(
+                topic=f"sujet {i}", position=f"position {i}",
+                confidence="high", status="active",
+            )
+            session.add(b)
+        session.commit()
 
     builder = IdentityPromptBuilder(
         style_analyzer=analyzer,
         belief_extractor=BeliefExtractor(
-            llm=FakeLLM(), embedder=FakeEmbedder(), session=session,
+            llm=FakeLLM(), embedder=FakeEmbedder(),
         ),
         profile_manager=get_user_manager("default"),
-        session=session,
     )
     assert builder.is_identity_mode_ready() is True
 
@@ -254,29 +237,29 @@ def test_conflict_resolution():
     """Deux croyances en conflit, on en résout une → statuts corrects."""
     from user.belief_extractor import BeliefExtractor
     from user.identity_models import BeliefStore
-    from user.db import get_session
+    from user.db import db_session
 
-    session = get_session()
-
-    b1 = BeliefStore(
-        topic="télétravail", position="Le télétravail est plus productif.",
-        confidence="high", status="conflicted",
-    )
-    b2 = BeliefStore(
-        topic="télétravail", position="Le bureau est plus productif.",
-        confidence="medium", status="conflicted",
-    )
-    session.add_all([b1, b2])
-    session.commit()
-    keep_id, drop_id = b1.id, b2.id
+    with db_session() as session:
+        b1 = BeliefStore(
+            topic="télétravail", position="Le télétravail est plus productif.",
+            confidence="high", status="conflicted",
+        )
+        b2 = BeliefStore(
+            topic="télétravail", position="Le bureau est plus productif.",
+            confidence="medium", status="conflicted",
+        )
+        session.add_all([b1, b2])
+        session.commit()
+        keep_id, drop_id = b1.id, b2.id
 
     extractor = BeliefExtractor(
-        llm=FakeLLM(), embedder=FakeEmbedder(), session=session,
+        llm=FakeLLM(), embedder=FakeEmbedder(),
     )
     extractor.resolve_conflict(keep_id, drop_id)
 
-    kept = session.query(BeliefStore).filter_by(id=keep_id).first()
-    dropped = session.query(BeliefStore).filter_by(id=drop_id).first()
+    with db_session() as session:
+        kept = session.query(BeliefStore).filter_by(id=keep_id).first()
+        dropped = session.query(BeliefStore).filter_by(id=drop_id).first()
 
-    assert kept.status == "user_confirmed"
-    assert dropped.status == "superseded"
+        assert kept.status == "user_confirmed"
+        assert dropped.status == "superseded"

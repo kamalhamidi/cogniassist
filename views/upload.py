@@ -159,18 +159,18 @@ def show_upload_page() -> None:
                                     from user import get_user_manager
                                     m = get_user_manager(user_id)
                                     # Récupérer le résumé depuis la base
-                                    from user.db import get_session
+                                    from user.db import db_session
                                     from user.profile import DocumentAccess
-                                    session = get_session()
-                                    da = (
-                                        session.query(DocumentAccess)
-                                        .filter_by(user_id=user_id, file_name=doc["file_name"])
-                                        .first()
-                                    )
-                                    if da and da.summary:
-                                        st.markdown(da.summary)
-                                    else:
-                                        st.caption("Résumé non disponible")
+                                    with db_session() as session:
+                                        da = (
+                                            session.query(DocumentAccess)
+                                            .filter_by(user_id=user_id, file_name=doc["file_name"])
+                                            .first()
+                                        )
+                                        if da and da.summary:
+                                            st.markdown(da.summary)
+                                        else:
+                                            st.caption("Résumé non disponible")
                                 except Exception:
                                     st.caption("Erreur lors du chargement du résumé")
 
@@ -276,11 +276,11 @@ def _ingest_personal_writing(user_id: str, files: list, date_written) -> None:
 
     # 2. Analyse du style (rapide, non bloquante)
     try:
-        from user.db import get_session
+        from user.db import db_session
         with st.spinner("Analyse de votre style d'écriture…"):
-            session = get_session()
-            metrics = pipeline.style_analyzer.analyze(style_texts)
-            pipeline.style_analyzer.save_profile(metrics, session)
+            with db_session() as session:
+                metrics = pipeline.style_analyzer.analyze(style_texts)
+                pipeline.style_analyzer.save_profile(metrics, session)
         st.caption("✍️ Profil de style mis à jour.")
     except Exception as e:
         st.warning(f"Analyse du style indisponible : {e}")
@@ -318,5 +318,5 @@ def _ingest_personal_writing(user_id: str, files: list, date_written) -> None:
 
 
 if __name__ == "__main__":
-    st.session_state.current_page = "📁 Documents"
-    st.switch_page("app.py")
+    from ui.layout import PAGE_FILES
+    st.switch_page(PAGE_FILES["upload"])

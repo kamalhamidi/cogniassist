@@ -107,17 +107,19 @@ def _show_learning_section(user_id: str) -> None:
             "dans votre profil identité."
         )
         if st.button("Résoudre maintenant", key="dash_resolve_conflicts"):
-            st.session_state.current_page = "👤 Profil"
-            st.rerun()
+            from ui.layout import PAGE_FILES
+            st.session_state.profile_tab = "🧠 Mon identité"
+            st.switch_page(PAGE_FILES["profile"])
 
     # ── Proposition de recalibration ──
     try:
-        from user.db import get_session
+        from user.db import db_session
         from user.identity_models import StyleCorrection
-        pending_corr = (
-            get_session().query(StyleCorrection)
-            .filter_by(processed=False).count()
-        )
+        with db_session() as session:
+            pending_corr = (
+                session.query(StyleCorrection)
+                .filter_by(processed=False).count()
+            )
         from config import settings
         if pending_corr >= settings.STYLE_RECALIBRATION_THRESHOLD:
             st.info(
@@ -383,6 +385,6 @@ def show_dashboard_page() -> None:
 
 
 if __name__ == "__main__":
-    st.session_state.current_page = "📊 Dashboard"
-    st.switch_page("app.py")
+    from ui.layout import PAGE_FILES
+    st.switch_page(PAGE_FILES["dashboard"])
 

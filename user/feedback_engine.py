@@ -19,7 +19,7 @@ import math
 from datetime import datetime
 
 from config import settings
-from user.db import get_session
+from user.db import uses_db_session
 from user.identity_models import (
     StyleProfile,
     StyleCorrection,
@@ -48,13 +48,11 @@ class FeedbackEngine:
 
     def __init__(
         self,
-        session,
         style_analyzer,
         belief_extractor,
         knowledge_engine,
         embedder,
     ) -> None:
-        self.session = session or get_session()
         self.style_analyzer = style_analyzer
         self.belief_extractor = belief_extractor
         self.knowledge_engine = knowledge_engine
@@ -65,8 +63,9 @@ class FeedbackEngine:
     # SIGNAL 1 : Correction stylistique
     # ══════════════════════════════════════════════════════════════════
 
+    @uses_db_session
     def on_style_correction(
-        self, interaction_id, query: str, generated: str, corrected: str,
+        self, session, interaction_id, query: str, generated: str, corrected: str,
     ) -> dict:
         """
         Appelée quand l'utilisateur réécrit une réponse.
@@ -87,8 +86,8 @@ class FeedbackEngine:
                 diff_summary=diff_summary or None,
                 processed=False,
             )
-            self.session.add(rec)
-            self.session.commit()
+            session.add(rec)
+            session.commit()
 
             self._log_signal(
                 signal_type="style_correction",
@@ -109,7 +108,7 @@ class FeedbackEngine:
                 "diff_summary": diff_summary,
             }
         except Exception as e:
-            self.session.rollback()
+            session.rollback()
             logger.error("on_style_correction a échoué : %s", e)
         return result
 
@@ -137,11 +136,12 @@ class FeedbackEngine:
             logger.debug("_extract_diff_summary a échoué : %s", e)
             return ""
 
+    @uses_db_session
     def _check_correction_threshold(self) -> bool:
         """Recalibre si assez de corrections non traitées se sont accumulées."""
         try:
             pending = (
-                self.session.query(StyleCorrection)
+                session.query(StyleCorrection)
                 .filter_by(processed=False)
                 .count()
             )
@@ -152,6 +152,7 @@ class FeedbackEngine:
             logger.debug("_check_correction_threshold a échoué : %s", e)
         return False
 
+    @uses_db_session
     def _recalibrate_style(self, trigger_reason: str) -> None:
         """
         Recalcule le profil de style à partir des textes CORRIGÉS (ce que
@@ -160,9 +161,9 @@ class FeedbackEngine:
         if self.style_analyzer is None:
             return
         try:
-            before = self.style_analyzer.get_profile(self.session) or {}
+            before = self.style_analyzer.get_profile(session) or {}
 
-            corrections = self.session.query(StyleCorrection).all()
+            corrections = session.query(StyleCorrection).all()
             corrected_texts = [c.corrected for c in corrections if c.corrected]
 
             # On combine les écrits personnels (base stable) et les textes
@@ -187,7 +188,7 @@ class FeedbackEngine:
             delta_score = self._profile_delta(before, after)
 
             # Sauvegarder le nouveau profil
-            self.style_analyzer.save_profile(metrics, self.session)
+            self.style_analyzer.save_profile(metrics, session)
 
             # Journaliser (append-only)
             log = StyleCalibrationLog(
@@ -197,30 +198,31 @@ class FeedbackEngine:
                 after_json=json.dumps(self._numeric_metrics(after), ensure_ascii=False),
                 delta_score=round(delta_score, 4),
             )
-            self.session.add(log)
+            session.add(log)
 
             # Marquer les corrections comme traitées
             for c in corrections:
                 c.processed = True
 
-            self.session.commit()
+            session.commit()
             logger.info(
                 "Style recalibré (%s) — %d correction(s), delta=%.3f.",
                 trigger_reason, len(corrected_texts), delta_score,
             )
         except Exception as e:
-            self.session.rollback()
+            session.rollback()
             logger.error("_recalibrate_style a échoué : %s", e)
 
     # ══════════════════════════════════════════════════════════════════
     # SIGNAL 2 : Confirmation / rejet de croyance
     # ══════════════════════════════════════════════════════════════════
 
+    @uses_db_session
     def on_belief_confirmed(self, belief_id: int) -> None:
         """L'utilisateur confirme une croyance → user_confirmed + confiance haute."""
         try:
             belief = (
-                self.session.query(BeliefStore).filter_by(id=belief_id).first()
+                session.query(BeliefStore).filter_by(id=belief_id).first()
             )
             if belief is None:
                 return
@@ -229,7 +231,7 @@ class FeedbackEngine:
             if belief.confidence in ("medium", "low"):
                 belief.confidence = "high"
             belief.updated_at = datetime.utcnow()
-            self.session.commit()
+            session.commit()
 
             self._log_signal(
                 signal_type="belief_confirm",
@@ -241,16 +243,17 @@ class FeedbackEngine:
                 },
             )
         except Exception as e:
-            self.session.rollback()
+            session.rollback()
             logger.error("on_belief_confirmed a échoué : %s", e)
 
+    @uses_db_session
     def on_belief_rejected(
-        self, belief_id: int, replacement_position: str | None = None,
+        self, session, belief_id: int, replacement_position: str | None = None,
     ) -> None:
         """L'utilisateur rejette une croyance → superseded + timeline (+ remplacement)."""
         try:
             belief = (
-                self.session.query(BeliefStore).filter_by(id=belief_id).first()
+                session.query(BeliefStore).filter_by(id=belief_id).first()
             )
             if belief is None:
                 return
@@ -261,7 +264,7 @@ class FeedbackEngine:
             belief.updated_at = datetime.utcnow()
 
             # Timeline immuable (append-only)
-            self.session.add(BeliefTimeline(
+            session.add(BeliefTimeline(
                 belief_id=belief_id,
                 topic=topic,
                 old_position=old_position,
@@ -278,7 +281,7 @@ class FeedbackEngine:
                     status="user_confirmed",
                 )
 
-            self.session.commit()
+            session.commit()
 
             self._log_signal(
                 signal_type="belief_reject",
@@ -290,16 +293,17 @@ class FeedbackEngine:
                 },
             )
         except Exception as e:
-            self.session.rollback()
+            session.rollback()
             logger.error("on_belief_rejected a échoué : %s", e)
 
+    @uses_db_session
     def on_belief_updated(
-        self, belief_id: int, new_position: str, new_confidence: str,
+        self, session, belief_id: int, new_position: str, new_confidence: str,
     ) -> None:
         """L'utilisateur édite manuellement une croyance dans l'UI."""
         try:
             belief = (
-                self.session.query(BeliefStore).filter_by(id=belief_id).first()
+                session.query(BeliefStore).filter_by(id=belief_id).first()
             )
             if belief is None:
                 return
@@ -310,7 +314,7 @@ class FeedbackEngine:
                 confidence = "medium"
 
             # Timeline immuable
-            self.session.add(BeliefTimeline(
+            session.add(BeliefTimeline(
                 belief_id=belief_id,
                 topic=belief.topic,
                 old_position=old_position,
@@ -325,7 +329,7 @@ class FeedbackEngine:
             if embedding:
                 belief.set_embedding(embedding)
 
-            self.session.commit()
+            session.commit()
 
             self._log_signal(
                 signal_type="manual_edit",
@@ -334,13 +338,14 @@ class FeedbackEngine:
                 delta={"position": {"old": old_position, "new": new_position}},
             )
         except Exception as e:
-            self.session.rollback()
+            session.rollback()
             logger.error("on_belief_updated a échoué : %s", e)
 
     # ══════════════════════════════════════════════════════════════════
     # SIGNAL 3 : Amplification des pouces 👍 / 👎
     # ══════════════════════════════════════════════════════════════════
 
+    @uses_db_session
     def on_thumbs_up(self, interaction_id: int) -> None:
         """👍 → renforce les croyances et le style utilisés dans la réponse."""
         try:
@@ -350,18 +355,18 @@ class FeedbackEngine:
             if self.settings.THUMBS_CONFIDENCE_BOOST:
                 for bid in belief_ids:
                     belief = (
-                        self.session.query(BeliefStore).filter_by(id=bid).first()
+                        session.query(BeliefStore).filter_by(id=bid).first()
                     )
                     if belief is not None:
                         belief.confidence = self._boost_confidence(belief.confidence)
                         belief.updated_at = datetime.utcnow()
 
             # Incrémenter le compteur de renforcement sur le profil de style
-            profile = self.session.query(StyleProfile).first()
+            profile = session.query(StyleProfile).first()
             if profile is not None:
                 profile.reinforcement_count = (profile.reinforcement_count or 0) + 1
 
-            self.session.commit()
+            session.commit()
 
             self._log_signal(
                 signal_type="thumbs_up",
@@ -370,9 +375,10 @@ class FeedbackEngine:
                 delta={"reinforced_beliefs": belief_ids},
             )
         except Exception as e:
-            self.session.rollback()
+            session.rollback()
             logger.error("on_thumbs_up a échoué : %s", e)
 
+    @uses_db_session
     def on_thumbs_down(self, interaction_id: int, reason: str | None = None) -> None:
         """👎 → fait décroître la confiance des croyances utilisées."""
         try:
@@ -388,7 +394,7 @@ class FeedbackEngine:
 
             for bid in belief_ids:
                 belief = (
-                    self.session.query(BeliefStore).filter_by(id=bid).first()
+                    session.query(BeliefStore).filter_by(id=bid).first()
                 )
                 if belief is None:
                     continue
@@ -400,18 +406,19 @@ class FeedbackEngine:
                 if downs >= self.settings.BELIEF_CONFIDENCE_DECAY_STEPS:
                     belief.status = "conflicted"
 
-            self.session.commit()
+            session.commit()
         except Exception as e:
-            self.session.rollback()
+            session.rollback()
             logger.error("on_thumbs_down a échoué : %s", e)
 
+    @uses_db_session
     def _get_interaction_context(self, interaction_id: int) -> dict:
         """Récupère le contexte stocké d'une interaction passée. {} si absente."""
         try:
             if not interaction_id:
                 return {}
             inter = (
-                self.session.query(Interaction)
+                session.query(Interaction)
                 .filter_by(id=interaction_id)
                 .first()
             )
@@ -433,11 +440,12 @@ class FeedbackEngine:
             logger.debug("_get_interaction_context a échoué : %s", e)
             return {}
 
+    @uses_db_session
     def _count_thumbs_down_for_belief(self, belief_id: int) -> int:
         """Compte les signaux 👎 référençant une croyance donnée."""
         try:
             signals = (
-                self.session.query(FeedbackSignal)
+                session.query(FeedbackSignal)
                 .filter_by(signal_type="thumbs_down")
                 .all()
             )
@@ -454,13 +462,14 @@ class FeedbackEngine:
     # SIGNAL 4 : Détection de dérive
     # ══════════════════════════════════════════════════════════════════
 
+    @uses_db_session
     def check_for_drift(self) -> dict:
         """Compare les corrections récentes au profil de style courant."""
         result = {"drift_detected": False, "drift_score": 0.0, "recalibrated": False}
         try:
             window = self.settings.FIDELITY_SCORE_WINDOW
             corrections = (
-                self.session.query(StyleCorrection)
+                session.query(StyleCorrection)
                 .order_by(StyleCorrection.created_at.desc())
                 .limit(window)
                 .all()
@@ -480,12 +489,13 @@ class FeedbackEngine:
             logger.debug("check_for_drift a échoué : %s", e)
         return result
 
+    @uses_db_session
     def _compute_drift_score(self, recent_corrections: list[dict]) -> float:
         """Écart moyen entre les textes corrigés et le profil de style courant."""
         if self.style_analyzer is None:
             return 0.0
         try:
-            profile = self.style_analyzer.get_profile(self.session)
+            profile = self.style_analyzer.get_profile(session)
             if not profile:
                 return 0.0
             texts = [
@@ -505,6 +515,7 @@ class FeedbackEngine:
     # SIGNAL 5 : « J'ai changé d'avis »
     # ══════════════════════════════════════════════════════════════════
 
+    @uses_db_session
     def on_explicit_mind_change(self, topic: str, new_position: str) -> int:
         """L'utilisateur déclare explicitement une nouvelle position sur un sujet."""
         try:
@@ -513,7 +524,7 @@ class FeedbackEngine:
 
             match = self._find_belief_by_topic(topic)
             if match is not None:
-                self.session.add(BeliefTimeline(
+                session.add(BeliefTimeline(
                     belief_id=match.id,
                     topic=match.topic,
                     old_position=match.position,
@@ -535,7 +546,7 @@ class FeedbackEngine:
 
             # Si aucune croyance existante, tracer quand même l'apparition
             if match is None:
-                self.session.add(BeliefTimeline(
+                session.add(BeliefTimeline(
                     belief_id=new_belief_id,
                     topic=topic_to_use,
                     old_position=None,
@@ -543,7 +554,7 @@ class FeedbackEngine:
                     change_reason="explicit_update",
                 ))
 
-            self.session.commit()
+            session.commit()
 
             self._log_signal(
                 signal_type="belief_changed",
@@ -556,15 +567,16 @@ class FeedbackEngine:
             )
             return new_belief_id
         except Exception as e:
-            self.session.rollback()
+            session.rollback()
             logger.error("on_explicit_mind_change a échoué : %s", e)
             return -1
 
+    @uses_db_session
     def _find_belief_by_topic(self, topic: str):
         """Trouve une croyance active/confirmée correspondant au sujet (sémantique)."""
         try:
             beliefs = (
-                self.session.query(BeliefStore)
+                session.query(BeliefStore)
                 .filter(BeliefStore.status.in_(["active", "user_confirmed"]))
                 .all()
             )
@@ -593,12 +605,13 @@ class FeedbackEngine:
     # SIGNAL 6 : Score de fidélité d'identité
     # ══════════════════════════════════════════════════════════════════
 
+    @uses_db_session
     def score_response_fidelity(self, interaction_id: int, response_text: str) -> float:
         """Mesure la fidélité d'une réponse au profil de style. Journalise le score."""
         if self.style_analyzer is None or not response_text:
             return 0.0
         try:
-            profile = self.style_analyzer.get_profile(self.session)
+            profile = self.style_analyzer.get_profile(session)
             if not profile:
                 return 0.0
 
@@ -625,11 +638,11 @@ class FeedbackEngine:
                 first_person_delta=round(fp_delta, 4),
                 overall_score=round(overall, 4),
             )
-            self.session.add(log)
-            self.session.commit()
+            session.add(log)
+            session.commit()
             return overall
         except Exception as e:
-            self.session.rollback()
+            session.rollback()
             logger.error("score_response_fidelity a échoué : %s", e)
             return 0.0
 
@@ -637,6 +650,7 @@ class FeedbackEngine:
     # Résumés pour l'UI
     # ══════════════════════════════════════════════════════════════════
 
+    @uses_db_session
     def get_learning_summary(self) -> dict:
         """Résumé de l'apprentissage pour le dashboard."""
         summary = {
@@ -650,18 +664,18 @@ class FeedbackEngine:
             "pending_conflicts": 0,
         }
         try:
-            summary["total_corrections"] = self.session.query(StyleCorrection).count()
-            summary["style_calibrations"] = self.session.query(StyleCalibrationLog).count()
+            summary["total_corrections"] = session.query(StyleCorrection).count()
+            summary["style_calibrations"] = session.query(StyleCalibrationLog).count()
             summary["beliefs_confirmed"] = (
-                self.session.query(BeliefStore)
+                session.query(BeliefStore)
                 .filter_by(status="user_confirmed").count()
             )
             summary["beliefs_rejected"] = (
-                self.session.query(BeliefStore)
+                session.query(BeliefStore)
                 .filter_by(status="superseded").count()
             )
             summary["pending_conflicts"] = (
-                self.session.query(BeliefStore)
+                session.query(BeliefStore)
                 .filter_by(status="conflicted").count()
             )
 
@@ -672,7 +686,7 @@ class FeedbackEngine:
                 summary["fidelity_trend"] = self._trend(scores)
 
             last_cal = (
-                self.session.query(StyleCalibrationLog)
+                session.query(StyleCalibrationLog)
                 .order_by(StyleCalibrationLog.created_at.desc())
                 .first()
             )
@@ -682,11 +696,12 @@ class FeedbackEngine:
             logger.debug("get_learning_summary a échoué : %s", e)
         return summary
 
+    @uses_db_session
     def get_fidelity_history(self, last_n: int = 30) -> list[dict]:
         """Retourne les N derniers scores de fidélité (ordre chronologique)."""
         try:
             rows = (
-                self.session.query(IdentityFidelityLog)
+                session.query(IdentityFidelityLog)
                 .order_by(IdentityFidelityLog.created_at.desc())
                 .limit(last_n)
                 .all()
@@ -704,10 +719,11 @@ class FeedbackEngine:
             logger.debug("get_fidelity_history a échoué : %s", e)
             return []
 
+    @uses_db_session
     def get_belief_timeline(self, topic: str | None = None) -> list[dict]:
         """Retourne l'historique d'évolution des croyances (filtrable par sujet)."""
         try:
-            q = self.session.query(BeliefTimeline)
+            q = session.query(BeliefTimeline)
             if topic:
                 q = q.filter(BeliefTimeline.topic == topic)
             rows = q.order_by(BeliefTimeline.created_at.desc()).all()
@@ -720,8 +736,9 @@ class FeedbackEngine:
     # Helpers internes
     # ══════════════════════════════════════════════════════════════════
 
+    @uses_db_session
     def _log_signal(
-        self, signal_type: str, interaction_id, context: dict, delta: dict,
+        self, session, signal_type: str, interaction_id, context: dict, delta: dict,
     ) -> None:
         """Enregistre un feedback_signal. Best-effort, jamais bloquant."""
         try:
@@ -732,14 +749,15 @@ class FeedbackEngine:
                 delta_json=json.dumps(delta, ensure_ascii=False, default=str),
                 processed=False,
             )
-            self.session.add(sig)
-            self.session.commit()
+            session.add(sig)
+            session.commit()
         except Exception as e:
-            self.session.rollback()
+            session.rollback()
             logger.debug("_log_signal a échoué : %s", e)
 
+    @uses_db_session
     def _create_belief(
-        self, topic: str, position: str, confidence: str, status: str,
+        self, session, topic: str, position: str, confidence: str, status: str,
     ) -> int:
         """Crée une nouvelle croyance avec embedding. Retourne son id (-1 si échec)."""
         try:
@@ -754,8 +772,8 @@ class FeedbackEngine:
             embedding = self._embed(f"{topic}. {position}")
             if embedding:
                 belief.set_embedding(embedding)
-            self.session.add(belief)
-            self.session.flush()
+            session.add(belief)
+            session.flush()
             return belief.id
         except Exception as e:
             logger.error("_create_belief a échoué : %s", e)

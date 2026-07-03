@@ -12,7 +12,7 @@ Assemble un prompt système « second cerveau » à partir de :
 import logging
 
 from config import settings
-from user.db import get_session
+from user.db import uses_db_session
 
 logger = logging.getLogger("cogniassist.user")
 
@@ -32,19 +32,16 @@ class IdentityPromptBuilder:
         style_analyzer,
         belief_extractor,
         profile_manager,
-        session=None,
     ) -> None:
         """
         Args:
             style_analyzer: Instance StyleAnalyzer.
             belief_extractor: Instance BeliefExtractor.
             profile_manager: UserProfileManager existant.
-            session: Session SQLAlchemy (optionnelle).
         """
         self.style_analyzer = style_analyzer
         self.belief_extractor = belief_extractor
         self.profile_manager = profile_manager
-        self.session = session or get_session()
 
     # ─────────────────────────────────────────────────────────────────
     # API principale
@@ -69,10 +66,11 @@ class IdentityPromptBuilder:
     # Composants
     # ─────────────────────────────────────────────────────────────────
 
-    def _get_style_fragment(self) -> str:
+    @uses_db_session
+    def _get_style_fragment(self, session) -> str:
         """Retourne le fragment de style, ou un fragment générique par défaut."""
         try:
-            profile = self.style_analyzer.get_profile(self.session)
+            profile = self.style_analyzer.get_profile(session)
             if profile and profile.get("style_prompt_fragment"):
                 return profile["style_prompt_fragment"]
         except Exception as e:
@@ -149,20 +147,21 @@ Si on te demande qui tu es, présente-toi comme {user_name} (ex. « Bonjour, je 
     # Disponibilité
     # ─────────────────────────────────────────────────────────────────
 
-    def is_identity_mode_ready(self) -> bool:
+    @uses_db_session
+    def is_identity_mode_ready(self, session) -> bool:
         """
         True seulement si assez de données existent pour le mode identité :
         un style_profile existe ET au moins MIN_BELIEFS_FOR_IDENTITY_MODE
         croyances actives/confirmées sont présentes.
         """
         try:
-            profile = self.style_analyzer.get_profile(self.session)
+            profile = self.style_analyzer.get_profile(session)
             if not profile:
                 return False
 
             from user.identity_models import BeliefStore
             count = (
-                self.session.query(BeliefStore)
+                session.query(BeliefStore)
                 .filter(BeliefStore.status.in_(["active", "user_confirmed", "conflicted"]))
                 .count()
             )

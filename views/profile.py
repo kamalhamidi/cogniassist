@@ -147,14 +147,25 @@ def show_profile_page() -> None:
                              use_container_width=True):
                     st.toast("Modifiez vos informations dans l'onglet Préférences ci-dessous ✏️")
 
-    # ═══ Onglets ═══
-    tab_prefs, tab_context, tab_privacy, tab_kmb, tab_identity = st.tabs([
+    # ═══ Navigation par onglet (rendu paresseux — un seul panneau à la fois) ═══
+    _TAB_OPTIONS = [
         "⚙️ Préférences", "🎯 Contexte RAG", "🔒 Données & Confidentialité",
         "🧠 Know Me Better", "🧠 Mon identité",
-    ])
+    ]
+    active_tab = st.segmented_control(
+        "Section profil",
+        options=_TAB_OPTIONS,
+        default=st.session_state.get("profile_tab", _TAB_OPTIONS[0]),
+        label_visibility="collapsed",
+        key="profile_tab_nav",
+    )
+    if active_tab:
+        st.session_state.profile_tab = active_tab
+    else:
+        active_tab = st.session_state.get("profile_tab", _TAB_OPTIONS[0])
 
-    # ─── Tab 1 : Préférences ───
-    with tab_prefs:
+    # ─── Préférences ───
+    if active_tab == "⚙️ Préférences":
         col_form, col_tips = st.columns([7, 3], gap="large")
 
         with col_form:
@@ -233,8 +244,8 @@ def show_profile_page() -> None:
         with col_tips:
             _render_tips_card()
 
-    # ─── Tab 2 : Contexte RAG ───
-    with tab_context:
+    # ─── Contexte RAG ───
+    elif active_tab == "🎯 Contexte RAG":
         st.subheader("Contexte injecté dans vos prompts RAG")
         st.caption("Voici exactement ce que CogniAssist sait de vous lors de chaque question")
 
@@ -290,8 +301,8 @@ def show_profile_page() -> None:
         except Exception as e:
             st.error(f"Erreur paramètres : {e}")
 
-    # ─── Tab 3 : Données & Confidentialité ───
-    with tab_privacy:
+    # ─── Données & Confidentialité ───
+    elif active_tab == "🔒 Données & Confidentialité":
         st.subheader("🔒 Gestion des données personnelles")
         st.caption(
             "Toutes vos données sont stockées localement. "
@@ -400,14 +411,14 @@ def show_profile_page() -> None:
             if st.button("🔁 Relancer l'onboarding", key="btn_redo_onboarding"):
                 try:
                     from user.profile import UserProfile
-                    from user.db import get_session
-                    session = get_session()
-                    up = session.query(UserProfile).filter_by(
-                        user_id=user_id,
-                    ).first()
-                    if up:
-                        up.onboarding_completed = False
-                        session.commit()
+                    from user.db import db_session
+                    with db_session() as session:
+                        up = session.query(UserProfile).filter_by(
+                            user_id=user_id,
+                        ).first()
+                        if up:
+                            up.onboarding_completed = False
+                            session.commit()
                     st.cache_data.clear()
                     st.rerun()
                 except Exception as e:
@@ -484,16 +495,16 @@ def show_profile_page() -> None:
             except Exception as e:
                 st.error(f"Erreur lors de la réinitialisation : {e}")
 
-    # ─── Tab 4 : Know Me Better ───
-    with tab_kmb:
+    # ─── Know Me Better ───
+    elif active_tab == "🧠 Know Me Better":
         try:
-            from pages.know_me_better import show_kmb_page
+            from views.know_me_better import show_kmb_page
             show_kmb_page(is_onboarding=False)
         except Exception as e:
             st.error(f"Erreur d'affichage Know Me Better : {e}")
 
-    # ─── Tab 5 : Mon identité (Layer 2 — Second cerveau) ───
-    with tab_identity:
+    # ─── Mon identité ───
+    elif active_tab == "🧠 Mon identité":
         _show_identity_tab(user_id)
 
 
@@ -510,9 +521,9 @@ def _show_identity_tab(user_id: str) -> None:
     # ── Section A : Style d'écriture ──
     st.subheader("✍️ Style d'écriture")
     try:
-        from user.db import get_session
-        session = get_session()
-        style = pipeline.style_analyzer.get_profile(session)
+        from user.db import db_session
+        with db_session() as session:
+            style = pipeline.style_analyzer.get_profile(session)
     except Exception:
         style = None
 
@@ -790,6 +801,6 @@ def _show_identity_tab(user_id: str) -> None:
 
 
 if __name__ == "__main__":
-    st.session_state.current_page = "👤 Profil"
-    st.switch_page("app.py")
+    from ui.layout import PAGE_FILES
+    st.switch_page(PAGE_FILES["profile"])
 

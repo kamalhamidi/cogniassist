@@ -12,7 +12,7 @@ from collections import Counter
 from datetime import datetime
 from typing import Optional
 
-from user.db import get_session
+from user.db import uses_db_session
 from user.acpe_models import KnowledgeProfile
 
 logger = logging.getLogger("cogniassist.user")
@@ -84,7 +84,6 @@ class KnowledgeProfileEngine:
     def __init__(self, user_id: str) -> None:
         """Initialise le moteur pour un utilisateur donné."""
         self.user_id = user_id
-        self.session = get_session()
 
     def update_from_interaction(
         self,
@@ -143,21 +142,23 @@ class KnowledgeProfileEngine:
             self._update_confidence(domain)
         return domains
 
-    def get_knowledge_profile(self) -> list[dict]:
+    @uses_db_session
+    def get_knowledge_profile(self, session) -> list[dict]:
         """Retourne tous les profils de connaissances triés par score.
 
         Returns:
             Liste de dicts avec domain, mastery_score, confidence, etc.
         """
         profiles = (
-            self.session.query(KnowledgeProfile)
+            session.query(KnowledgeProfile)
             .filter_by(user_id=self.user_id)
             .order_by(KnowledgeProfile.mastery_score.desc())
             .all()
         )
         return [kp.to_dict() for kp in profiles]
 
-    def get_top_domains(self, limit: int = 5) -> list[str]:
+    @uses_db_session
+    def get_top_domains(self, session, limit: int = 5) -> list[str]:
         """Retourne les domaines les mieux maîtrisés.
 
         Args:
@@ -167,7 +168,7 @@ class KnowledgeProfileEngine:
             Liste de noms de domaines.
         """
         profiles = (
-            self.session.query(KnowledgeProfile)
+            session.query(KnowledgeProfile)
             .filter_by(user_id=self.user_id)
             .filter(KnowledgeProfile.interaction_count >= self.MIN_INTERACTIONS)
             .order_by(KnowledgeProfile.mastery_score.desc())
@@ -176,7 +177,8 @@ class KnowledgeProfileEngine:
         )
         return [kp.domain for kp in profiles]
 
-    def get_weak_domains(self, limit: int = 5, threshold: int = 40) -> list[str]:
+    @uses_db_session
+    def get_weak_domains(self, session, limit: int = 5, threshold: int = 40) -> list[str]:
         """Retourne les domaines à renforcer (score sous le seuil).
 
         Args:
@@ -187,7 +189,7 @@ class KnowledgeProfileEngine:
             Liste de noms de domaines faibles.
         """
         profiles = (
-            self.session.query(KnowledgeProfile)
+            session.query(KnowledgeProfile)
             .filter_by(user_id=self.user_id)
             .filter(
                 KnowledgeProfile.mastery_score < threshold,
@@ -224,8 +226,9 @@ class KnowledgeProfileEngine:
 
         return detected
 
+    @uses_db_session
     def _update_mastery(
-        self, domain: str, signal: float, weight: float = 1.0,
+        self, session, domain: str, signal: float, weight: float = 1.0,
     ) -> None:
         """Met à jour le score de maîtrise via EMA pondérée.
 
@@ -238,7 +241,7 @@ class KnowledgeProfileEngine:
         """
         try:
             kp = (
-                self.session.query(KnowledgeProfile)
+                session.query(KnowledgeProfile)
                 .filter_by(user_id=self.user_id, domain=domain)
                 .first()
             )
@@ -251,7 +254,7 @@ class KnowledgeProfileEngine:
                     confidence=0,
                     interaction_count=0,
                 )
-                self.session.add(kp)
+                session.add(kp)
 
             # EMA
             alpha = min(self.ALPHA * weight, 0.8)  # Plafonner à 0.8
@@ -260,12 +263,13 @@ class KnowledgeProfileEngine:
             kp.interaction_count += 1
             kp.updated_at = datetime.utcnow()
 
-            self.session.commit()
+            session.commit()
         except Exception as e:
-            self.session.rollback()
+            session.rollback()
             logger.error("Erreur update mastery (%s) : %s", domain, e)
 
-    def _update_confidence(self, domain: str) -> None:
+    @uses_db_session
+    def _update_confidence(self, session, domain: str) -> None:
         """Met à jour le niveau de confiance (logarithmique).
 
         confidence = min(100, 20 * log2(interaction_count + 1))
@@ -275,7 +279,7 @@ class KnowledgeProfileEngine:
         """
         try:
             kp = (
-                self.session.query(KnowledgeProfile)
+                session.query(KnowledgeProfile)
                 .filter_by(user_id=self.user_id, domain=domain)
                 .first()
             )
@@ -284,7 +288,7 @@ class KnowledgeProfileEngine:
                     100,
                     int(round(20 * math.log2(kp.interaction_count + 1))),
                 )
-                self.session.commit()
+                session.commit()
         except Exception as e:
-            self.session.rollback()
+            session.rollback()
             logger.error("Erreur update confidence (%s) : %s", domain, e)

@@ -12,7 +12,7 @@ from collections import Counter
 from datetime import datetime
 from typing import Optional
 
-from user.db import get_session
+from user.db import uses_db_session
 from user.acpe_models import UsagePattern
 from user.history import InteractionHistory
 from user.knowledge_engine import KnowledgeProfileEngine
@@ -30,7 +30,6 @@ class ProfileEvolutionEngine:
     def __init__(self, user_id: str) -> None:
         """Initialise le moteur d'évolution pour un utilisateur."""
         self.user_id = user_id
-        self.session = get_session()
         self.history = InteractionHistory(user_id)
         self.knowledge_engine = KnowledgeProfileEngine(user_id)
 
@@ -201,11 +200,12 @@ class ProfileEvolutionEngine:
     # Helpers pour les métriques
     # ═══════════════════════════════════════════════════════════
 
-    def _set_metric(self, name: str, value: any) -> None:
+    @uses_db_session
+    def _set_metric(self, session, name: str, value: any) -> None:
         """Définit ou met à jour une métrique."""
         try:
             pattern = (
-                self.session.query(UsagePattern)
+                session.query(UsagePattern)
                 .filter_by(user_id=self.user_id, metric_name=name)
                 .first()
             )
@@ -214,20 +214,21 @@ class ProfileEvolutionEngine:
                     user_id=self.user_id,
                     metric_name=name,
                 )
-                self.session.add(pattern)
+                session.add(pattern)
 
             pattern.set_value(value)
             pattern.updated_at = datetime.utcnow()
-            self.session.commit()
+            session.commit()
         except Exception as e:
-            self.session.rollback()
+            session.rollback()
             logger.debug("Erreur set metric '%s' : %s", name, e)
 
-    def _get_metric(self, name: str) -> any:
+    @uses_db_session
+    def _get_metric(self, session, name: str) -> any:
         """Récupère la valeur d'une métrique."""
         try:
             pattern = (
-                self.session.query(UsagePattern)
+                session.query(UsagePattern)
                 .filter_by(user_id=self.user_id, metric_name=name)
                 .first()
             )
@@ -235,11 +236,12 @@ class ProfileEvolutionEngine:
         except Exception:
             return None
 
-    def _get_all_metrics(self) -> dict:
+    @uses_db_session
+    def _get_all_metrics(self, session) -> dict:
         """Récupère toutes les métriques de l'utilisateur."""
         try:
             patterns = (
-                self.session.query(UsagePattern)
+                session.query(UsagePattern)
                 .filter_by(user_id=self.user_id)
                 .all()
             )

@@ -531,30 +531,31 @@ class TestProgressiveProfiling:
         from user.progressive import ProgressiveProfilingEngine
         from user.acpe_models import ProgressivePrompt
         from user.profile import UserProfileManager
-        from user.db import get_session
+        from user.db import db_session
 
         UserProfileManager("test_decline")
         prog = ProgressiveProfilingEngine("test_decline")
 
-        session = get_session()
-        pp = ProgressivePrompt(
-            user_id="test_decline",
-            prompt_key="test_decline_key",
-            message="Test decline",
-            action_data=json.dumps({"type": "add_interest", "domain": "SQL"}),
-            status="pending",
-        )
-        session.add(pp)
-        session.commit()
+        with db_session() as session:
+            pp = ProgressivePrompt(
+                user_id="test_decline",
+                prompt_key="test_decline_key",
+                message="Test decline",
+                action_data=json.dumps({"type": "add_interest", "domain": "SQL"}),
+                status="pending",
+            )
+            session.add(pp)
+            session.commit()
+            pp_id = pp.id
 
-        prog.decline_prompt(pp.id)
+        prog.decline_prompt(pp_id)
 
-        # Utiliser la session du progressive engine pour lire le résultat
-        refreshed = (
-            prog.session.query(ProgressivePrompt)
-            .filter_by(id=pp.id)
-            .first()
-        )
+        with db_session() as session:
+            refreshed = (
+                session.query(ProgressivePrompt)
+                .filter_by(id=pp_id)
+                .first()
+            )
         assert refreshed.status == "declined"
 
     def test_change_style_action(self) -> None:
